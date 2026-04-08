@@ -1,11 +1,17 @@
+# Build from source — for development only
+# Usage: docker compose -f docker-compose.build.yml up --build -d
+
 services:
   tavernshelf:
-    image: ghcr.io/YOURUSERNAME/tavernshelf:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: tavernshelf
     ports:
       - "${PORT:-7624}:3000"
     environment:
-      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required - run: openssl rand -hex 64}
+      - NODE_ENV=${NODE_ENV:-production}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
       - JWT_EXPIRY=${JWT_EXPIRY:-7d}
       - ADMIN_EMAIL=${ADMIN_EMAIL:?ADMIN_EMAIL is required}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}

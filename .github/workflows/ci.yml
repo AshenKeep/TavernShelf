@@ -60,16 +60,16 @@ jobs:
         run: npm run build
 
   docker:
-    name: Docker Compose — validate config
+    name: Docker — validate build compose
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate docker-compose.yml
+      - name: Validate docker-compose.build.yml
         run: |
           cp .env.example .env
           sed -i 's|JWT_SECRET=.*|JWT_SECRET=ci-test-secret-not-real|' .env
           sed -i 's|LIBRARY_PATH=.*|LIBRARY_PATH=/tmp/library|' .env
           sed -i 's|ADMIN_PASSWORD=.*|ADMIN_PASSWORD=ci-test-pass|' .env
           mkdir -p /tmp/library
-          docker compose config --quiet
+          docker compose -f docker-compose.build.yml config --quiet

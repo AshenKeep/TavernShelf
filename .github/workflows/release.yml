@@ -7,7 +7,7 @@ on:
 
 jobs:
   release:
-    name: Build release archive
+    name: Create GitHub Release
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -15,37 +15,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
-
-      - name: Create release archive
-        run: |
-          zip -r tavernshelf-${{ steps.version.outputs.VERSION }}.zip . \
-            --exclude "*.git*" \
-            --exclude "node_modules/*" \
-            --exclude "*/node_modules/*" \
-            --exclude "dist/*" \
-            --exclude "*/dist/*" \
-            --exclude ".env" \
-            --exclude "*.db" \
-            --exclude "covers/*" \
-            --exclude "uploads/*"
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: TavernShelf ${{ steps.version.outputs.VERSION }}
+          name: TavernShelf ${{ github.ref_name }}
           body: |
-            ## TavernShelf ${{ steps.version.outputs.VERSION }}
-
-            See [README.md](./README.md) for setup instructions.
+            ## TavernShelf ${{ github.ref_name }}
 
             ### Quick Start
-            1. Download `tavernshelf-${{ steps.version.outputs.VERSION }}.zip`
-            2. Unzip and `cd tavernshelf`
-            3. `cp .env.example .env` and fill in your values
-            4. `./start.sh`
-          files: tavernshelf-${{ steps.version.outputs.VERSION }}.zip
+
+            1. Copy `docker-compose.yml` from this repo
+            2. Create a `.env` file next to it (see `.env.example`)
+            3. Run:
+
+            ```bash
+            docker compose up -d
+            ```
+
+            Open **http://localhost:7624** — sign in with your admin credentials.
+
+            The image is pulled automatically from GHCR. No build step required.
+
+            ---
+
+            See [README.md](./README.md) for full setup instructions, reverse proxy guides, and troubleshooting.
           draft: false
-          prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}
+          prerelease: ${{ contains(github.ref_name, '-') }}
