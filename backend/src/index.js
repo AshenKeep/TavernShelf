@@ -61,7 +61,7 @@ app.use('/api/uploads', uploadRoutes);
 
 // ── Health ────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', version: '0.0.2', uptime: Math.floor(process.uptime()) });
+  res.json({ status: 'ok', version: '0.0.3', uptime: Math.floor(process.uptime()) });
 });
 
 // ── Serve built React frontend ────────────────────────────
@@ -75,7 +75,7 @@ if (existsSync(publicDir)) {
 } else {
   // Dev mode — no built frontend present
   app.get('/', (req, res) => {
-    res.json({ message: 'TavernShelf API v0.0.2 — frontend not built yet. Run: cd frontend && npm run build' });
+    res.json({ message: 'TavernShelf API v0.0.3 — frontend not built yet. Run: cd frontend && npm run build' });
   });
 }
 
@@ -99,7 +99,7 @@ async function start() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[TavernShelf] v0.0.2 listening on :${PORT}`);
+    console.log(`[TavernShelf] v0.0.3 listening on :${PORT}`);
     console.log(`[TavernShelf] Library: ${process.env.LIBRARY_PATH}`);
   });
 

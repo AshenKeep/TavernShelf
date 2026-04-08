@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.0.3] — 2026-04-08
+
+### Fixed
+- `SQLITE_BUSY` crash loop on startup — stale `-wal` and `-shm` lock files left by a previously crashed container are now deleted before opening the database
+- Added retry logic with 5 attempts and 1s delay between each, so a genuinely busy DB recovers instead of crash-looping
+- Set `busy_timeout = 5000` pragma so SQLite waits up to 5s for locks during normal operation
+
+### Changed
+- `docker-compose.yml` now pins to explicit version tag `:0.0.3` instead of `:latest`
+
+---
+
 ## [0.0.2] — 2026-04-08
 
 ### Changed
