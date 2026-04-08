@@ -1,0 +1,156 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-0:       #0d0b12;
+  --bg-1:       #13101c;
+  --bg-2:       #1c1828;
+  --bg-3:       #252135;
+  --bg-4:       #2f2a42;
+  --border:     rgba(139, 120, 200, 0.12);
+  --border-md:  rgba(139, 120, 200, 0.22);
+  --border-hi:  rgba(139, 120, 200, 0.40);
+
+  --purple-dim: #6b4fa0;
+  --purple:     #8b6bc8;
+  --purple-hi:  #a98fe0;
+  --gold:       #c9922a;
+  --gold-hi:    #e8b44a;
+  --red:        #a83232;
+  --red-hi:     #c84848;
+  --green:      #2a7a4a;
+  --green-hi:   #3da866;
+
+  --text-0:     #f0ecfc;
+  --text-1:     #c8c0e0;
+  --text-2:     #8a82a8;
+  --text-3:     #5a5478;
+
+  --font-display: 'Cinzel', serif;
+  --font-body:    'Crimson Text', serif;
+  --font-ui:      'Inter', sans-serif;
+
+  --radius-sm:  6px;
+  --radius-md:  10px;
+  --radius-lg:  14px;
+  --radius-xl:  20px;
+
+  --shadow-card: 0 2px 16px rgba(0,0,0,0.5), 0 0 0 1px rgba(139,120,200,0.08);
+  --shadow-glow: 0 0 24px rgba(139, 120, 200, 0.15);
+
+  --sidebar-w:  260px;
+  --topbar-h:   58px;
+}
+
+html, body, #root {
+  height: 100%;
+  background: var(--bg-0);
+  color: var(--text-1);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg-4); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-hi); }
+
+a { color: inherit; text-decoration: none; }
+
+button {
+  font-family: var(--font-ui);
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+input, select, textarea {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  color: var(--text-0);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--purple);
+}
+input::placeholder { color: var(--text-3); }
+select option { background: var(--bg-2); }
+
+/* Utility classes */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-ui);
+  transition: all 0.15s;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-primary {
+  background: var(--purple);
+  color: #fff;
+  border: 1px solid transparent;
+}
+.btn-primary:hover { background: var(--purple-hi); }
+.btn-ghost {
+  background: transparent;
+  color: var(--text-1);
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover { background: var(--bg-3); border-color: var(--border-md); }
+.btn-danger {
+  background: var(--red);
+  color: #fff;
+  border: 1px solid transparent;
+}
+.btn-danger:hover { background: var(--red-hi); }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-ui);
+}
+.badge-purple { background: rgba(139,107,200,0.18); color: var(--purple-hi); }
+.badge-gold   { background: rgba(201,146,42,0.18);  color: var(--gold-hi);   }
+.badge-green  { background: rgba(42,122,74,0.18);   color: var(--green-hi);  }
+.badge-red    { background: rgba(168,50,50,0.18);    color: var(--red-hi);    }
+.badge-gray   { background: rgba(255,255,255,0.07);  color: var(--text-2);    }
+
+.card {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.spinner {
+  width: 22px; height: 22px;
+  border: 2px solid var(--border);
+  border-top-color: var(--purple);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}

@@ -1,0 +1,38 @@
+# Environment — never commit secrets
+.env
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build output
+dist/
+**/dist/
+.vite/
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Generated data (Docker volumes hold these)
+covers/
+uploads/
+data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Docker override (local tweaks)
+docker-compose.override.yml

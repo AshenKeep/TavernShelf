@@ -1,0 +1,66 @@
+version: '3.9'
+
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: tavernshelf-nginx
+    ports:
+      - "${PORT:-7624}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - covers_data:/app/covers:ro
+    depends_on:
+      - api
+      - frontend
+    restart: unless-stopped
+    networks:
+      - tavernshelf
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tavernshelf-api
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - JWT_EXPIRY=${JWT_EXPIRY:-7d}
+      - LIBRARY_PATH=/library
+      - COVERS_PATH=/app/covers
+      - UPLOADS_PATH=/app/uploads
+      - DB_PATH=/app/data/tavernshelf.db
+      - ADMIN_EMAIL=${ADMIN_EMAIL:?ADMIN_EMAIL is required}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+    volumes:
+      - ${LIBRARY_PATH:?LIBRARY_PATH is required}:/library:ro
+      - covers_data:/app/covers
+      - uploads_data:/app/uploads
+      - db_data:/app/data
+    restart: unless-stopped
+    networks:
+      - tavernshelf
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=/api
+    container_name: tavernshelf-frontend
+    restart: unless-stopped
+    networks:
+      - tavernshelf
+
+volumes:
+  covers_data:
+  uploads_data:
+  db_data:
+
+networks:
+  tavernshelf:
+    driver: bridge

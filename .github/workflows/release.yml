@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    name: Build release archive
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Create release archive
+        run: |
+          zip -r tavernshelf-${{ steps.version.outputs.VERSION }}.zip . \
+            --exclude "*.git*" \
+            --exclude "node_modules/*" \
+            --exclude "*/node_modules/*" \
+            --exclude "dist/*" \
+            --exclude "*/dist/*" \
+            --exclude ".env" \
+            --exclude "*.db" \
+            --exclude "covers/*" \
+            --exclude "uploads/*"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: TavernShelf ${{ steps.version.outputs.VERSION }}
+          body: |
+            ## TavernShelf ${{ steps.version.outputs.VERSION }}
+
+            See [README.md](./README.md) for setup instructions.
+
+            ### Quick Start
+            1. Download `tavernshelf-${{ steps.version.outputs.VERSION }}.zip`
+            2. Unzip and `cd tavernshelf`
+            3. `cp .env.example .env` and fill in your values
+            4. `./start.sh`
+          files: tavernshelf-${{ steps.version.outputs.VERSION }}.zip
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}

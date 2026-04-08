@@ -1,0 +1,28 @@
+{
+  "name": "tavernshelf-api",
+  "version": "0.0.1",
+  "description": "TavernShelf TTRPG Library API",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "db:migrate": "node src/db/migrate.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^9.4.3",
+    "chokidar": "^3.6.0",
+    "cors": "^2.8.5",
+    "express": "^4.18.3",
+    "express-rate-limit": "^7.2.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mime-types": "^2.1.35",
+    "multer": "^1.4.5-lts.1",
+    "node-fetch": "^3.3.2",
+    "sharp": "^0.33.3",
+    "uuid": "^9.0.1",
+    "yauzl": "^3.1.3"
+  }
+}
