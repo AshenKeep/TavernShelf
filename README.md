@@ -4,7 +4,7 @@
 
 TavernShelf lets you host your entire tabletop RPG collection for yourself and your campaign members, accessible from any browser. Inspired by [Audiobookshelf](https://www.audiobookshelf.org/). No cloud. No subscriptions. Your files stay yours.
 
-![GitHub release](https://img.shields.io/github/v/release/YOURUSERNAME/tavernshelf)
+![GitHub release](https://img.shields.io/github/v/release/AshenKeep/tavernshelf)
 ![GHCR](https://img.shields.io/badge/ghcr.io-tavernshelf-blue)
 
 ---
@@ -33,7 +33,7 @@ TavernShelf lets you host your entire tabletop RPG collection for yourself and y
 ```yaml
 services:
   tavernshelf:
-    image: ghcr.io/YOURUSERNAME/tavernshelf:latest
+    image: ghcr.io/ashenkeep/tavernshelf:latest
     container_name: tavernshelf
     ports:
       - "7624:3000"
@@ -253,7 +253,7 @@ Generate a bcrypt hash (12 rounds) at https://bcrypt-generator.com
 ## Building from Source
 
 ```bash
-git clone https://github.com/YOURUSERNAME/tavernshelf.git
+git clone https://github.com/AshenKeep/tavernshelf.git
 cd tavernshelf
 cp .env.example .env
 # edit .env

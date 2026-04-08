@@ -1,6 +1,9 @@
 services:
   tavernshelf:
-    image: ghcr.io/YOURUSERNAME/tavernshelf:latest
+    # :latest = stable release
+    # :dev    = latest dev build (may be unstable)
+    # :x.y.z  = specific version
+    image: ghcr.io/ashenkeep/tavernshelf:latest
     container_name: tavernshelf
     ports:
       - "${PORT:-7624}:3000"
