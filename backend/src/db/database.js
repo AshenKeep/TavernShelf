@@ -20,8 +20,7 @@ function sleep(ms) {
 }
 
 function openDb(maxAttempts = 10, delayMs = 2000) {
-  // Remove stale WAL/SHM lock files left by a previously crashed container.
-  // Safe to do when no other process holds the DB open.
+  // Remove stale WAL/SHM lock files if present
   for (const suffix of ['-wal', '-shm']) {
     const f = DB_PATH + suffix;
     if (existsSync(f)) {
@@ -34,27 +33,27 @@ function openDb(maxAttempts = 10, delayMs = 2000) {
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      // Pass timeout so better-sqlite3 waits up to 10s for the file lock
-      const db = new Database(DB_PATH, { timeout: 10000 });
+      // timeout option makes better-sqlite3 wait for the file lock
+      const db = new Database(DB_PATH, { timeout: 15000 });
 
-      // Set busy_timeout FIRST before any other pragma —
-      // journal_mode=WAL requires a write lock and will fail if
-      // another connection holds it without a timeout in place.
-      db.pragma('busy_timeout = 10000');
-      db.pragma('journal_mode = WAL');
+      // Use DELETE journal mode — WAL requires shared memory files
+      // that cause SQLITE_BUSY on Docker volumes with certain storage drivers.
+      // DELETE mode is simpler, fully compatible, and doesn't need -wal/-shm files.
+      db.pragma('journal_mode = DELETE');
+      db.pragma('busy_timeout = 15000');
       db.pragma('foreign_keys = ON');
-      db.pragma('synchronous = NORMAL');
+      db.pragma('synchronous = FULL');
 
-      console.log(`[DB] Opened successfully on attempt ${attempt}`);
+      console.log(`[DB] Opened successfully (attempt ${attempt})`);
       return db;
 
     } catch (err) {
-      const isLocked = err.code === 'SQLITE_BUSY' || err.code === 'SQLITE_LOCKED';
-      if (isLocked && attempt < maxAttempts) {
-        console.warn(`[DB] Locked (${err.code}), retrying in ${delayMs}ms (attempt ${attempt}/${maxAttempts})`);
+      const retryable = err.code === 'SQLITE_BUSY' || err.code === 'SQLITE_LOCKED';
+      if (retryable && attempt < maxAttempts) {
+        console.warn(`[DB] ${err.code} on attempt ${attempt}/${maxAttempts}, retrying in ${delayMs}ms...`);
         sleep(delayMs);
       } else {
-        console.error(`[DB] Failed after ${attempt} attempt(s):`, err.message);
+        console.error(`[DB] Failed to open after ${attempt} attempt(s):`, err.message);
         throw err;
       }
     }
