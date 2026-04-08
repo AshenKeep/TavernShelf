@@ -5,6 +5,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.0.4] — 2026-04-08
+
+### Changed
+- Replaced SQLite (better-sqlite3) with PGlite (embedded Postgres) — eliminates SQLITE_BUSY errors on CIFS/NFS mounts
+- PGlite stores data as a directory (`/app/data/pgdata`) rather than a single file, which works correctly on all Docker volume types including CIFS-mounted NAS shares
+- All database calls converted from synchronous to async/await throughout the entire backend
+- `DB_PATH` environment variable now points to a directory, not a file
+
+### Added
+- `GET /api/admin/backup` — downloads all library metadata, users, folders, and settings as a portable JSON file
+- `POST /api/admin/restore` — restores from a TavernShelf backup JSON file, database-agnostic format
+- Admin panel **Backup & Restore** tab with download button and file upload restore
+- Backup format is versioned so future migrations are always possible
+
+### Fixed
+- SQLITE_BUSY crash loop on CIFS/NFS Docker volumes — root cause was SQLite's reliance on POSIX file locking which CIFS does not support
+
+### Removed
+- `better-sqlite3` dependency (and its native build requirements)
+
+---
+
 ## [0.0.3] — 2026-04-08
 
 ### Fixed

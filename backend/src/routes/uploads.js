@@ -3,36 +3,31 @@ import multer from 'multer';
 import { v4 as uuid } from 'uuid';
 import { join, extname } from 'path';
 import { renameSync, mkdirSync, existsSync, unlinkSync } from 'fs';
-import { getDb } from '../db/database.js';
+import { getDb, dbGet, dbRun, dbAll } from '../db/database.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { UPLOADS_PATH, LIBRARY_PATH, SUPPORTED_EXTENSIONS, FILE_TYPE_MAP } from '../config.js';
-import { generateCover } from '../services/coverService.js';
 import { scanLibrary } from '../services/libraryScanner.js';
 
 mkdirSync(UPLOADS_PATH, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: UPLOADS_PATH,
-  filename: (req, file, cb) => {
-    const id = uuid();
-    const ext = extname(file.originalname).slice(1).toLowerCase();
-    cb(null, `${id}.${ext}`);
-  }
+  filename: (req, file, cb) => cb(null, `${uuid()}.${extname(file.originalname).slice(1).toLowerCase()}`),
 });
 
 const upload = multer({
   storage,
-  limits: { fileSize: 500 * 1024 * 1024 }, // 500 MB
+  limits: { fileSize: 500 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const ext = extname(file.originalname).slice(1).toLowerCase();
-    if (SUPPORTED_EXTENSIONS.has(ext)) cb(null, true);
-    else cb(new Error(`Unsupported file type: .${ext}`));
-  }
+    SUPPORTED_EXTENSIONS.has(ext) ? cb(null, true) : cb(new Error(`Unsupported file type: .${ext}`));
+  },
 });
 
 const router = Router();
+const now = () => Math.floor(Date.now() / 1000);
 
-// POST /api/uploads  — submit a file for approval
+// POST /api/uploads
 router.post('/', requireAuth, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
@@ -42,116 +37,96 @@ router.post('/', requireAuth, upload.single('file'), async (req, res) => {
     return res.status(400).json({ error: 'targetFolder and title are required' });
   }
 
-  const ext = extname(req.file.originalname).slice(1).toLowerCase();
-  const fileType = FILE_TYPE_MAP[ext] || 'other';
-
-  const db = getDb();
-  const id = uuid();
-
-  db.prepare(`
-    INSERT INTO upload_queue
-      (id, filename, original_name, target_folder, title, authors, description,
-       system, content_type, tags, file_size, file_type, uploaded_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    id,
-    req.file.filename,
-    req.file.originalname,
-    targetFolder,
-    title,
-    authors ? JSON.stringify(JSON.parse(authors)) : '[]',
-    description || '',
-    system || '',
-    contentType || '',
-    tags ? JSON.stringify(JSON.parse(tags)) : '[]',
-    req.file.size,
-    fileType,
-    req.user.id
-  );
-
-  res.status(201).json({ id, message: 'File submitted for approval' });
-});
-
-// GET /api/uploads  — list queue (admin sees all, others see own)
-router.get('/', requireAuth, (req, res) => {
-  const db = getDb();
-  const { status = 'pending' } = req.query;
-
-  let sql = `
-    SELECT uq.*, u.display_name as uploader_name, r.display_name as reviewer_name
-    FROM upload_queue uq
-    JOIN users u ON uq.uploaded_by = u.id
-    LEFT JOIN users r ON uq.reviewed_by = r.id
-    WHERE uq.status = ?
-  `;
-  const params = [status];
-
-  if (req.user.role !== 'admin') {
-    sql += ' AND uq.uploaded_by = ?';
-    params.push(req.user.id);
-  }
-
-  sql += ' ORDER BY uq.created_at DESC';
-  const items = db.prepare(sql).all(...params);
-  res.json(items);
-});
-
-// POST /api/uploads/:id/approve  (admin only)
-router.post('/:id/approve', requireAuth, requireRole('admin'), async (req, res) => {
-  const db = getDb();
-  const item = db.prepare('SELECT * FROM upload_queue WHERE id = ?').get(req.params.id);
-  if (!item) return res.status(404).json({ error: 'Not found' });
-  if (item.status !== 'pending') return res.status(400).json({ error: 'Already reviewed' });
-
-  // Move file to library
-  const ext = extname(item.filename).slice(1).toLowerCase();
-  const destFolder = join(LIBRARY_PATH, item.target_folder);
-
   try {
-    mkdirSync(destFolder, { recursive: true });
-    const safeFilename = item.original_name.replace(/[^a-zA-Z0-9._\-\s]/g, '_');
-    const destPath = join(destFolder, safeFilename);
-    const srcPath = join(UPLOADS_PATH, item.filename);
+    const ext = extname(req.file.originalname).slice(1).toLowerCase();
+    const db = await getDb();
+    const id = uuid();
 
-    renameSync(srcPath, destPath);
+    await dbRun(db, `
+      INSERT INTO upload_queue
+        (id, filename, original_name, target_folder, title, authors, description,
+         system, content_type, tags, file_size, file_type, uploaded_by, created_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+    `, [
+      id, req.file.filename, req.file.originalname, targetFolder, title,
+      authors ? JSON.stringify(JSON.parse(authors)) : '[]',
+      description || '', system || '', contentType || '',
+      tags ? JSON.stringify(JSON.parse(tags)) : '[]',
+      req.file.size, FILE_TYPE_MAP[ext] || 'other', req.user.id, now(),
+    ]);
 
-    db.prepare(`
-      UPDATE upload_queue
-      SET status = 'approved', reviewed_by = ?, reviewed_at = unixepoch()
-      WHERE id = ?
-    `).run(req.user.id, item.id);
-
-    // Trigger re-scan to pick up new file
-    scanLibrary().catch(e => console.error('[Upload Approve] Scan error:', e));
-
-    res.json({ message: 'Approved and added to library' });
+    res.status(201).json({ id, message: 'File submitted for approval' });
   } catch (e) {
-    console.error('[Upload Approve] Error:', e);
-    res.status(500).json({ error: 'Failed to move file to library' });
+    console.error('[Uploads] Submit:', e.message);
+    try { unlinkSync(req.file.path); } catch {}
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
-// POST /api/uploads/:id/reject  (admin only)
-router.post('/:id/reject', requireAuth, requireRole('admin'), (req, res) => {
-  const db = getDb();
-  const item = db.prepare('SELECT * FROM upload_queue WHERE id = ?').get(req.params.id);
-  if (!item) return res.status(404).json({ error: 'Not found' });
-  if (item.status !== 'pending') return res.status(400).json({ error: 'Already reviewed' });
-
-  const { reason } = req.body;
-
+// GET /api/uploads
+router.get('/', requireAuth, async (req, res) => {
   try {
-    const srcPath = join(UPLOADS_PATH, item.filename);
-    if (existsSync(srcPath)) unlinkSync(srcPath);
-  } catch {}
+    const { status = 'pending' } = req.query;
+    const db = await getDb();
 
-  db.prepare(`
-    UPDATE upload_queue
-    SET status = 'rejected', reviewed_by = ?, reviewed_at = unixepoch(), reject_reason = ?
-    WHERE id = ?
-  `).run(req.user.id, reason || '', item.id);
+    let sql = `
+      SELECT uq.*, u.display_name as uploader_name, r.display_name as reviewer_name
+      FROM upload_queue uq
+      JOIN users u ON uq.uploaded_by = u.id
+      LEFT JOIN users r ON uq.reviewed_by = r.id
+      WHERE uq.status = $1
+    `;
+    const params = [status];
 
-  res.json({ message: 'Rejected' });
+    if (req.user.role !== 'admin') {
+      sql += ' AND uq.uploaded_by = $2';
+      params.push(req.user.id);
+    }
+    sql += ' ORDER BY uq.created_at DESC';
+    res.json(await dbAll(db, sql, params));
+  } catch (e) { console.error('[Uploads] List:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/uploads/:id/approve
+router.post('/:id/approve', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const db = await getDb();
+    const item = await dbGet(db, 'SELECT * FROM upload_queue WHERE id = $1', [req.params.id]);
+    if (!item) return res.status(404).json({ error: 'Not found' });
+    if (item.status !== 'pending') return res.status(400).json({ error: 'Already reviewed' });
+
+    const destFolder = join(LIBRARY_PATH, item.target_folder);
+    mkdirSync(destFolder, { recursive: true });
+
+    const safeFilename = item.original_name.replace(/[^a-zA-Z0-9._\-\s]/g, '_');
+    renameSync(join(UPLOADS_PATH, item.filename), join(destFolder, safeFilename));
+
+    await dbRun(db,
+      "UPDATE upload_queue SET status='approved', reviewed_by=$1, reviewed_at=$2 WHERE id=$3",
+      [req.user.id, now(), item.id]
+    );
+
+    scanLibrary().catch(e => console.error('[Upload Approve] Scan error:', e));
+    res.json({ message: 'Approved and added to library' });
+  } catch (e) { console.error('[Uploads] Approve:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/uploads/:id/reject
+router.post('/:id/reject', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const db = await getDb();
+    const item = await dbGet(db, 'SELECT * FROM upload_queue WHERE id = $1', [req.params.id]);
+    if (!item) return res.status(404).json({ error: 'Not found' });
+    if (item.status !== 'pending') return res.status(400).json({ error: 'Already reviewed' });
+
+    try { if (existsSync(join(UPLOADS_PATH, item.filename))) unlinkSync(join(UPLOADS_PATH, item.filename)); } catch {}
+
+    await dbRun(db,
+      "UPDATE upload_queue SET status='rejected', reviewed_by=$1, reviewed_at=$2, reject_reason=$3 WHERE id=$4",
+      [req.user.id, now(), req.body.reason || '', item.id]
+    );
+    res.json({ message: 'Rejected' });
+  } catch (e) { console.error('[Uploads] Reject:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
 export default router;

@@ -3,7 +3,7 @@ services:
     # :latest = stable release
     # :dev    = latest dev build (may be unstable)
     # :x.y.z  = specific version
-    image: ghcr.io/ashenkeep/tavernshelf:0.0.3
+    image: ghcr.io/ashenkeep/tavernshelf:0.0.4
     container_name: tavernshelf
     ports:
       - "${PORT:-7624}:3000"
@@ -13,6 +13,8 @@ services:
       - ADMIN_EMAIL=${ADMIN_EMAIL:?ADMIN_EMAIL is required}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
       - TRUST_PROXY=${TRUST_PROXY:-0}
+      # PGlite stores its data as a directory — works on CIFS/NFS/any filesystem
+      - DB_PATH=/app/data/pgdata
     volumes:
       - ${LIBRARY_PATH:?LIBRARY_PATH is required}:/library
       - tavernshelf_covers:/app/covers
@@ -24,7 +26,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 15s
+      start_period: 20s
 
 volumes:
   tavernshelf_covers:

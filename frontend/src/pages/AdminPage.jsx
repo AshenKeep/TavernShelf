@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useApi } from '../hooks/useApi.js';
 
 function formatSize(b) {
@@ -13,11 +13,10 @@ function formatDate(unix) {
 }
 
 export default function AdminPage() {
-  const { get, post } = useApi();
+  const { get, post, token } = useApi();
   const [tab, setTab] = useState('queue');
 
   const [queue, setQueue]     = useState([]);
-  const [users, setUsers]     = useState([]);
   const [invites, setInvites] = useState([]);
   const [stats, setStats]     = useState(null);
 
@@ -29,50 +28,96 @@ export default function AdminPage() {
   const [scanning, setScanning]         = useState(false);
   const [scanMsg, setScanMsg]           = useState('');
 
-  const loadQueue   = () => get('/uploads?status=pending').then(setQueue).catch(() => {});
-  const loadUsers   = () => get('/auth/me').then(() => {}).catch(() => {}); // just a placeholder; full user list would need an admin endpoint
+  // Backup/restore state
+  const [restoring, setRestoring]     = useState(false);
+  const [restoreMsg, setRestoreMsg]   = useState('');
+  const [restoreError, setRestoreError] = useState('');
+  const restoreFileRef = useRef(null);
+
+  const loadQueue = () => get('/uploads?status=pending').then(setQueue).catch(() => {});
   const loadInvites = () => get('/auth/invites').then(setInvites).catch(() => {});
-  const loadStats   = () => get('/library/stats').then(setStats).catch(() => {});
+  const loadStats = () => get('/library/stats').then(setStats).catch(() => {});
 
   useEffect(() => { loadQueue(); loadStats(); }, []);
   useEffect(() => { if (tab === 'invites') loadInvites(); }, [tab]);
 
-  const approve = async (id) => {
-    await post(`/uploads/${id}/approve`, {});
-    loadQueue();
-  };
+  const approve = async (id) => { await post(`/uploads/${id}/approve`, {}); loadQueue(); };
 
   const reject = async () => {
     await post(`/uploads/${rejectId}/reject`, { reason: rejectReason });
-    setRejectId(null); setRejectReason('');
-    loadQueue();
+    setRejectId(null); setRejectReason(''); loadQueue();
   };
 
   const createInvite = async () => {
     const inv = await post('/auth/invite', { role: inviteRole, expiresInDays: inviteExpiry });
-    setNewInvite(inv);
-    loadInvites();
+    setNewInvite(inv); loadInvites();
   };
 
   const triggerScan = async () => {
     setScanning(true); setScanMsg('');
+    try { await post('/library/scan', {}); setScanMsg('Scan started — check server logs for progress.'); }
+    catch (e) { setScanMsg(`Error: ${e.message}`); }
+    finally { setScanning(false); }
+  };
+
+  const handleBackup = () => {
+    // Trigger file download via anchor tag with auth header workaround
+    // We fetch the JSON and create a blob download
+    fetch('/api/admin/backup', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => {
+        const filename = r.headers.get('content-disposition')?.match(/filename="(.+)"/)?.[1]
+          || `tavernshelf-backup-${new Date().toISOString().slice(0,10)}.json`;
+        return r.blob().then(blob => ({ blob, filename }));
+      })
+      .then(({ blob, filename }) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename; a.click();
+        URL.revokeObjectURL(url);
+      })
+      .catch(e => console.error('Backup failed:', e));
+  };
+
+  const handleRestore = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setRestoring(true); setRestoreMsg(''); setRestoreError('');
+
+    const fd = new FormData();
+    fd.append('backup', file);
+
     try {
-      await post('/library/scan', {});
-      setScanMsg('Scan started — check server logs for progress.');
+      const res = await fetch('/api/admin/restore', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setRestoreMsg(`Restore complete — ${data.counts.library_items} items, ${data.counts.users} users restored.`);
     } catch (e) {
-      setScanMsg(`Error: ${e.message}`);
+      setRestoreError(`Restore failed: ${e.message}`);
     } finally {
-      setScanning(false);
+      setRestoring(false);
+      if (restoreFileRef.current) restoreFileRef.current.value = '';
     }
   };
 
   const registerUrl = (token) => `${window.location.origin}/register?invite=${token}`;
 
+  const TABS = [
+    ['queue',   'Upload Queue'],
+    ['invites', 'Invites'],
+    ['library', 'Library'],
+    ['backup',  'Backup & Restore'],
+  ];
+
   return (
     <div style={{ padding: 24, maxWidth: 900, margin: '0 auto' }}>
-      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--text-0)', marginBottom: 20 }}>Admin Panel</h1>
+      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--text-0)', marginBottom: 20 }}>
+        Admin Panel
+      </h1>
 
-      {/* Stats */}
       {stats && (
         <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
           {[
@@ -90,9 +135,8 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid var(--border)' }}>
-        {[['queue','Upload Queue'], ['invites','Invites'], ['library','Library']].map(([key, label]) => (
+        {TABS.map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)} style={{
             padding: '8px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer', border: 'none',
             background: 'transparent',
@@ -109,44 +153,38 @@ export default function AdminPage() {
 
       {/* Upload Queue */}
       {tab === 'queue' && (
-        queue.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-3)' }}>No pending uploads 🎉</div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {queue.map(item => (
-              <div key={item.id} className="card" style={{ padding: 16 }}>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                  <div style={{ flex: 1, minWidth: 200 }}>
-                    <div style={{ fontWeight: 500, color: 'var(--text-0)', marginBottom: 4 }}>{item.title}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 4 }}>
-                      {item.original_name} · {formatSize(item.file_size)} · {item.file_type.toUpperCase()}
+        queue.length === 0
+          ? <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-3)' }}>No pending uploads 🎉</div>
+          : <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {queue.map(item => (
+                <div key={item.id} className="card" style={{ padding: 16 }}>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <div style={{ fontWeight: 500, color: 'var(--text-0)', marginBottom: 4 }}>{item.title}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 4 }}>
+                        {item.original_name} · {formatSize(item.file_size)} · {item.file_type?.toUpperCase()}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--text-2)' }}>📁 {item.target_folder}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>
+                        Submitted by <strong style={{ color: 'var(--text-2)' }}>{item.uploader_name}</strong> · {formatDate(item.created_at)}
+                      </div>
+                      {item.system && <span className="badge badge-purple" style={{ marginTop: 6 }}>{item.system}</span>}
                     </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-2)' }}>
-                      📁 {item.target_folder}
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button className="btn btn-sm btn-primary" onClick={() => approve(item.id)}>✓ Approve</button>
+                      <button className="btn btn-sm btn-danger" onClick={() => { setRejectId(item.id); setRejectReason(''); }}>✗ Reject</button>
                     </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>
-                      Submitted by <strong style={{ color: 'var(--text-2)' }}>{item.uploader_name}</strong> · {formatDate(item.created_at)}
-                    </div>
-                    {item.system && <span className="badge badge-purple" style={{ marginTop: 6 }}>{item.system}</span>}
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn btn-sm btn-primary" onClick={() => approve(item.id)}>✓ Approve</button>
-                    <button className="btn btn-sm btn-danger" onClick={() => { setRejectId(item.id); setRejectReason(''); }}>✗ Reject</button>
-                  </div>
+                  {rejectId === item.id && (
+                    <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                      <input placeholder="Reason (optional)" value={rejectReason} onChange={e => setRejectReason(e.target.value)} style={{ flex: 1 }} />
+                      <button className="btn btn-sm btn-danger" onClick={reject}>Confirm</button>
+                      <button className="btn btn-sm btn-ghost" onClick={() => setRejectId(null)}>Cancel</button>
+                    </div>
+                  )}
                 </div>
-
-                {rejectId === item.id && (
-                  <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-                    <input placeholder="Reason for rejection (optional)" value={rejectReason}
-                      onChange={e => setRejectReason(e.target.value)} style={{ flex: 1 }} />
-                    <button className="btn btn-sm btn-danger" onClick={reject}>Confirm</button>
-                    <button className="btn btn-sm btn-ghost" onClick={() => setRejectId(null)}>Cancel</button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )
+              ))}
+            </div>
       )}
 
       {/* Invites */}
@@ -158,27 +196,22 @@ export default function AdminPage() {
               <div style={{ minWidth: 130 }}>
                 <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Role</label>
                 <select value={inviteRole} onChange={e => setInviteRole(e.target.value)} style={{ width: 'auto' }}>
-                  <option value="member">Member (read-only)</option>
+                  <option value="member">Member (read only)</option>
                   <option value="uploader">Uploader (can submit files)</option>
                 </select>
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Expires in (days)</label>
-                <input type="number" value={inviteExpiry} min={1} max={30}
-                  onChange={e => setInviteExpiry(parseInt(e.target.value))}
-                  style={{ width: 80 }} />
+                <input type="number" value={inviteExpiry} min={1} max={30} onChange={e => setInviteExpiry(parseInt(e.target.value))} style={{ width: 80 }} />
               </div>
               <button className="btn btn-primary" onClick={createInvite}>Generate</button>
             </div>
-
             {newInvite && (
               <div style={{ marginTop: 16, background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
-                <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6 }}>Share this link with your campaign member:</div>
+                <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6 }}>Share this link:</div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <input readOnly value={registerUrl(newInvite.token)} style={{ flex: 1, fontSize: 12, fontFamily: 'monospace' }} />
-                  <button className="btn btn-ghost btn-sm" onClick={() => navigator.clipboard.writeText(registerUrl(newInvite.token))}>
-                    Copy
-                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => navigator.clipboard.writeText(registerUrl(newInvite.token))}>Copy</button>
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6 }}>
                   Role: <strong style={{ color: 'var(--text-2)' }}>{newInvite.role}</strong> · Expires: {formatDate(newInvite.expiresAt)}
@@ -186,8 +219,6 @@ export default function AdminPage() {
               </div>
             )}
           </div>
-
-          {/* Invite history */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {invites.map(inv => (
               <div key={inv.token} style={{ display: 'flex', gap: 12, padding: '10px 14px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, alignItems: 'center', fontSize: 13 }}>
@@ -202,18 +233,71 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* Library management */}
+      {/* Library */}
       {tab === 'library' && (
+        <div className="card" style={{ padding: 20 }}>
+          <h3 style={{ fontFamily: 'var(--font-display)', color: 'var(--text-0)', marginBottom: 8, fontSize: 15 }}>Library Scanner</h3>
+          <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14 }}>
+            Re-scans your library folder for new, modified, or removed files. Runs automatically on startup.
+          </p>
+          <button className="btn btn-primary" onClick={triggerScan} disabled={scanning}>
+            {scanning ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Scanning…</> : '↺ Trigger Scan'}
+          </button>
+          {scanMsg && <div style={{ marginTop: 10, fontSize: 13, color: 'var(--green-hi)' }}>{scanMsg}</div>}
+        </div>
+      )}
+
+      {/* Backup & Restore */}
+      {tab === 'backup' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Backup */}
           <div className="card" style={{ padding: 20 }}>
-            <h3 style={{ fontFamily: 'var(--font-display)', color: 'var(--text-0)', marginBottom: 8, fontSize: 15 }}>Library Scanner</h3>
-            <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14 }}>
-              Re-scans your library folder for new, modified, or removed files. The library is also scanned automatically on startup.
+            <h3 style={{ fontFamily: 'var(--font-display)', color: 'var(--text-0)', marginBottom: 8, fontSize: 15 }}>Backup</h3>
+            <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 16, lineHeight: 1.6 }}>
+              Downloads all library metadata, user accounts, and settings as a JSON file.
+              Cover thumbnails are not included — they are regenerated automatically from your library files.
+              This backup is database-agnostic and can be restored to any future version of TavernShelf.
             </p>
-            <button className="btn btn-primary" onClick={triggerScan} disabled={scanning}>
-              {scanning ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Scanning…</> : '↺ Trigger Scan'}
+            <button className="btn btn-primary" onClick={handleBackup}>
+              ↓ Download Backup
             </button>
-            {scanMsg && <div style={{ marginTop: 10, fontSize: 13, color: 'var(--green-hi)' }}>{scanMsg}</div>}
+          </div>
+
+          {/* Restore */}
+          <div className="card" style={{ padding: 20 }}>
+            <h3 style={{ fontFamily: 'var(--font-display)', color: 'var(--text-0)', marginBottom: 8, fontSize: 15 }}>Restore</h3>
+            <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 8, lineHeight: 1.6 }}>
+              Restores metadata from a TavernShelf backup JSON file.
+            </p>
+            <div style={{ background: 'rgba(168,50,50,0.10)', border: '1px solid rgba(168,50,50,0.25)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: 'var(--red-hi)' }}>
+              ⚠ This will overwrite all existing metadata. Your library files on disk are not affected.
+            </div>
+
+            <input
+              ref={restoreFileRef}
+              type="file"
+              accept=".json"
+              style={{ display: 'none' }}
+              onChange={handleRestore}
+            />
+            <button
+              className="btn btn-ghost"
+              onClick={() => restoreFileRef.current?.click()}
+              disabled={restoring}
+            >
+              {restoring ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Restoring…</> : '↑ Select Backup File'}
+            </button>
+
+            {restoreMsg && (
+              <div style={{ marginTop: 12, background: 'rgba(42,122,74,0.12)', border: '1px solid rgba(42,122,74,0.3)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--green-hi)' }}>
+                {restoreMsg}
+              </div>
+            )}
+            {restoreError && (
+              <div style={{ marginTop: 12, background: 'rgba(168,50,50,0.12)', border: '1px solid rgba(168,50,50,0.3)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-hi)' }}>
+                {restoreError}
+              </div>
+            )}
           </div>
         </div>
       )}

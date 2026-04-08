@@ -1,33 +1,21 @@
 import fetch from 'node-fetch';
-import { getDb } from '../db/database.js';
+import { getDb, dbGet, dbRun } from '../db/database.js';
+
+const now = () => Math.floor(Date.now() / 1000);
 
 export async function fetchMetadataByTitle(title) {
   const results = [];
-
-  try {
-    const ol = await searchOpenLibrary(title);
-    results.push(...ol);
-  } catch (e) {
-    console.warn('[Metadata] OpenLibrary failed:', e.message);
-  }
-
-  try {
-    const gb = await searchGoogleBooks(title);
-    results.push(...gb);
-  } catch (e) {
-    console.warn('[Metadata] Google Books failed:', e.message);
-  }
-
+  try { results.push(...await searchOpenLibrary(title)); } catch (e) { console.warn('[Metadata] OpenLibrary:', e.message); }
+  try { results.push(...await searchGoogleBooks(title)); } catch (e) { console.warn('[Metadata] Google Books:', e.message); }
   return results;
 }
 
 async function searchOpenLibrary(title) {
-  const q = encodeURIComponent(title);
-  const res = await fetch(`https://openlibrary.org/search.json?title=${q}&limit=5&fields=key,title,author_name,first_publish_year,publisher,subject,cover_i`, {
-    signal: AbortSignal.timeout(8000)
-  });
+  const res = await fetch(
+    `https://openlibrary.org/search.json?title=${encodeURIComponent(title)}&limit=5&fields=key,title,author_name,first_publish_year,publisher,subject,cover_i`,
+    { signal: AbortSignal.timeout(8000) }
+  );
   if (!res.ok) return [];
-
   const data = await res.json();
   return (data.docs || []).map(doc => ({
     source: 'openlibrary',
@@ -42,14 +30,13 @@ async function searchOpenLibrary(title) {
 }
 
 async function searchGoogleBooks(title) {
-  const q = encodeURIComponent(title);
-  const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=5&printType=books`, {
-    signal: AbortSignal.timeout(8000)
-  });
+  const res = await fetch(
+    `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(title)}&maxResults=5&printType=books`,
+    { signal: AbortSignal.timeout(8000) }
+  );
   if (!res.ok) return [];
-
   const data = await res.json();
-  return ((data.items || [])).map(item => {
+  return (data.items || []).map(item => {
     const info = item.volumeInfo || {};
     return {
       source: 'googlebooks',
@@ -64,22 +51,22 @@ async function searchGoogleBooks(title) {
   });
 }
 
-export function applyMetadata(itemId, metadata) {
-  const db = getDb();
-  db.prepare(`
+export async function applyMetadata(itemId, metadata) {
+  const db = await getDb();
+  await dbRun(db, `
     UPDATE library_items SET
-      title           = COALESCE(?, title),
-      authors         = COALESCE(?, authors),
-      description     = COALESCE(?, description),
-      publisher       = COALESCE(?, publisher),
-      year            = COALESCE(?, year),
-      tags            = COALESCE(?, tags),
-      system          = COALESCE(?, system),
-      content_type    = COALESCE(?, content_type),
-      metadata_source = ?,
-      updated_at      = unixepoch()
-    WHERE id = ?
-  `).run(
+      title           = COALESCE($1, title),
+      authors         = COALESCE($2, authors),
+      description     = COALESCE($3, description),
+      publisher       = COALESCE($4, publisher),
+      year            = COALESCE($5, year),
+      tags            = COALESCE($6, tags),
+      system          = COALESCE($7, system),
+      content_type    = COALESCE($8, content_type),
+      metadata_source = $9,
+      updated_at      = $10
+    WHERE id = $11
+  `, [
     metadata.title || null,
     metadata.authors ? JSON.stringify(metadata.authors) : null,
     metadata.description || null,
@@ -89,8 +76,8 @@ export function applyMetadata(itemId, metadata) {
     metadata.system || null,
     metadata.contentType || null,
     metadata.source || 'manual',
-    itemId
-  );
-
-  return db.prepare('SELECT * FROM library_items WHERE id = ?').get(itemId);
+    now(),
+    itemId,
+  ]);
+  return dbGet(db, 'SELECT * FROM library_items WHERE id = $1', [itemId]);
 }
