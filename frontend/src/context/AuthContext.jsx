@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
-const API = import.meta.env.VITE_API_URL || '/api';
+const API = '/api';
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {

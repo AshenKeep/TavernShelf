@@ -1,6 +1,7 @@
 import { useAuth } from '../context/AuthContext.jsx';
 
-const BASE = import.meta.env.VITE_API_URL || '/api';
+// Always /api — same origin in production, proxied in dev via vite.config.js
+const BASE = '/api';
 
 export function useApi() {
   const { token, logout } = useAuth();
@@ -25,14 +26,17 @@ export function useApi() {
     return res.json();
   };
 
-  const get    = (path, params) => {
+  const get  = (path, params) => {
     const url = params ? `${path}?${new URLSearchParams(params)}` : path;
     return apiFetch(url);
   };
-  const post   = (path, body) => apiFetch(path, { method: 'POST',   body: body instanceof FormData ? body : JSON.stringify(body) });
-  const put    = (path, body) => apiFetch(path, { method: 'PUT',    body: JSON.stringify(body) });
-  const del    = (path)       => apiFetch(path, { method: 'DELETE' });
+  const post = (path, body) => apiFetch(path, { method: 'POST',  body: body instanceof FormData ? body : JSON.stringify(body) });
+  const put  = (path, body) => apiFetch(path, { method: 'PUT',   body: JSON.stringify(body) });
+  const del  = (path)       => apiFetch(path, { method: 'DELETE' });
 
+  // Stream URL for file reading — same origin, pass token as query param
+  // because the browser fetch in PDF.js and CBZ readers handle auth headers
+  // but <img> tags and direct links need the token in the URL
   const streamUrl = (itemId) => `${BASE}/library/items/${itemId}/stream`;
 
   return { get, post, put, del, streamUrl, token };

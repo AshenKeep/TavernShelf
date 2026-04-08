@@ -26,7 +26,17 @@ jobs:
         run: npm install
 
       - name: Check for syntax errors
-        run: node --check src/index.js src/config.js src/db/database.js src/middleware/auth.js src/routes/auth.js src/routes/library.js src/routes/uploads.js src/services/coverService.js src/services/libraryScanner.js src/services/metadataService.js
+        run: |
+          node --check src/index.js \
+            src/config.js \
+            src/db/database.js \
+            src/middleware/auth.js \
+            src/routes/auth.js \
+            src/routes/library.js \
+            src/routes/uploads.js \
+            src/services/coverService.js \
+            src/services/libraryScanner.js \
+            src/services/metadataService.js
 
   frontend:
     name: Frontend — install & build
@@ -48,8 +58,6 @@ jobs:
 
       - name: Build
         run: npm run build
-        env:
-          VITE_API_URL: /api
 
   docker:
     name: Docker Compose — validate config
@@ -60,7 +68,6 @@ jobs:
       - name: Validate docker-compose.yml
         run: |
           cp .env.example .env
-          # Inject dummy required values for validation only
           sed -i 's|JWT_SECRET=.*|JWT_SECRET=ci-test-secret-not-real|' .env
           sed -i 's|LIBRARY_PATH=.*|LIBRARY_PATH=/tmp/library|' .env
           sed -i 's|ADMIN_PASSWORD=.*|ADMIN_PASSWORD=ci-test-pass|' .env

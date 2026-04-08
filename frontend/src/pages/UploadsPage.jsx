@@ -84,7 +84,7 @@ export default function UploadsPage() {
       await new Promise((resolve, reject) => {
         xhr.onload  = () => xhr.status < 300 ? resolve() : reject(new Error(JSON.parse(xhr.responseText).error));
         xhr.onerror = () => reject(new Error('Upload failed'));
-        xhr.open('POST', `${import.meta.env.VITE_API_URL || '/api'}/uploads`);
+        xhr.open('POST', '/api/uploads');
         xhr.setRequestHeader('Authorization', `Bearer ${localStorage.getItem('ts_token')}`);
         xhr.send(fd);
       });

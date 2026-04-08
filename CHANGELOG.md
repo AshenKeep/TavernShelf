@@ -5,6 +5,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.0.2] — 2026-04-08
+
+### Changed
+- Consolidated three containers (nginx + api + frontend) into a single Docker image
+- Multi-stage Dockerfile: Vite builds React in stage 1, Express serves the built static files in stage 2
+- Library volume mount changed from read-only to read-write so approved uploads can be moved directly into the library folder
+- Removed all `VITE_API_URL` environment variable references — frontend always uses `/api` (same origin in production, proxied via Vite in dev)
+- `vite.config.js` dev server now proxies `/api` to `localhost:3000` for local development without Docker
+
+### Added
+- `TRUST_PROXY` environment variable — set to `1` when running behind nginx, Tailscale, Cloudflare, or any reverse proxy. Enables correct IP logging and HTTPS detection via `X-Forwarded-*` headers
+- Content Security Policy headers via Helmet — scoped to allow PDF.js workers and JSZip CDN imports
+- Reverse proxy setup guides in README for nginx, Tailscale, and Cloudflare Tunnel
+
+### Fixed
+- Duplicate `png` entry in `SUPPORTED_EXTENSIONS`
+- Library mount was `:ro` which caused approved upload moves to fail silently
+- `app.listen` now explicitly binds to `0.0.0.0` so the container is reachable from the host
+
+### Removed
+- `nginx/` directory and `nginx.conf` — no longer needed
+- `frontend/Dockerfile` — frontend is now built inside the main multi-stage Dockerfile
+
+---
+
 ## [0.0.1] — 2026-04-08
 
 ### Added

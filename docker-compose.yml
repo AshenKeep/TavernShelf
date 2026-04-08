@@ -1,29 +1,11 @@
 services:
-  nginx:
-    image: nginx:alpine
-    container_name: tavernshelf-nginx
-    ports:
-      - "${PORT:-7624}:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - covers_data:/app/covers:ro
-    depends_on:
-      api:
-        condition: service_healthy
-      frontend:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - tavernshelf
-    labels:
-      - "com.tavernshelf.service=proxy"
-      - "com.tavernshelf.version=0.0.1"
-
-  api:
+  tavernshelf:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
-    container_name: tavernshelf-api
+    container_name: tavernshelf
+    ports:
+      - "${PORT:-7624}:3000"
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required - run: openssl rand -hex 64}
@@ -34,14 +16,15 @@ services:
       - DB_PATH=/app/data/tavernshelf.db
       - ADMIN_EMAIL=${ADMIN_EMAIL:?ADMIN_EMAIL is required}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      # Set to 1 if running behind a reverse proxy (nginx, Tailscale, Cloudflare, etc.)
+      - TRUST_PROXY=${TRUST_PROXY:-0}
     volumes:
-      - ${LIBRARY_PATH:?LIBRARY_PATH is required - set this to your TTRPG folder}:/library:ro
+      # Your TTRPG library — read-write so approved uploads can be moved here
+      - ${LIBRARY_PATH:?LIBRARY_PATH is required - set this to your TTRPG folder}:/library
       - covers_data:/app/covers
       - uploads_data:/app/uploads
       - db_data:/app/data
     restart: unless-stopped
-    networks:
-      - tavernshelf
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
       interval: 30s
@@ -49,28 +32,8 @@ services:
       retries: 5
       start_period: 15s
     labels:
-      - "com.tavernshelf.service=api"
-      - "com.tavernshelf.version=0.0.1"
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        - VITE_API_URL=/api
-    container_name: tavernshelf-frontend
-    restart: unless-stopped
-    networks:
-      - tavernshelf
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:5173"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 20s
-    labels:
-      - "com.tavernshelf.service=frontend"
-      - "com.tavernshelf.version=0.0.1"
+      - "com.tavernshelf.service=app"
+      - "com.tavernshelf.version=0.0.2"
 
 volumes:
   covers_data:
@@ -82,7 +45,3 @@ volumes:
   db_data:
     labels:
       com.tavernshelf.volume: "sqlite database"
-
-networks:
-  tavernshelf:
-    driver: bridge
