@@ -9,35 +9,52 @@ let _db;
 
 export function getDb() {
   if (!_db) {
-    _db = openWithRetry();
-    _db.pragma('journal_mode = WAL');
-    _db.pragma('busy_timeout = 5000');
-    _db.pragma('foreign_keys = ON');
+    _db = openDb();
     migrate(_db);
   }
   return _db;
 }
 
-function openWithRetry(attempts = 5, delayMs = 1000) {
-  // Clean up stale WAL lock files from a previous crashed container.
-  // These are safe to remove when no process has the DB open.
+function sleep(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function openDb(maxAttempts = 10, delayMs = 2000) {
+  // Remove stale WAL/SHM lock files left by a previously crashed container.
+  // Safe to do when no other process holds the DB open.
   for (const suffix of ['-wal', '-shm']) {
-    const lockFile = DB_PATH + suffix;
-    if (existsSync(lockFile)) {
-      console.log(`[DB] Removing stale lock file: ${lockFile}`);
-      try { unlinkSync(lockFile); } catch {}
+    const f = DB_PATH + suffix;
+    if (existsSync(f)) {
+      console.log(`[DB] Removing stale lock file: ${f}`);
+      try { unlinkSync(f); } catch (e) {
+        console.warn(`[DB] Could not remove ${f}:`, e.message);
+      }
     }
   }
 
-  for (let i = 1; i <= attempts; i++) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      return new Database(DB_PATH);
+      // Pass timeout so better-sqlite3 waits up to 10s for the file lock
+      const db = new Database(DB_PATH, { timeout: 10000 });
+
+      // Set busy_timeout FIRST before any other pragma —
+      // journal_mode=WAL requires a write lock and will fail if
+      // another connection holds it without a timeout in place.
+      db.pragma('busy_timeout = 10000');
+      db.pragma('journal_mode = WAL');
+      db.pragma('foreign_keys = ON');
+      db.pragma('synchronous = NORMAL');
+
+      console.log(`[DB] Opened successfully on attempt ${attempt}`);
+      return db;
+
     } catch (err) {
-      if (err.code === 'SQLITE_BUSY' && i < attempts) {
-        console.warn(`[DB] Database locked, retrying in ${delayMs}ms (attempt ${i}/${attempts})`);
-        // Synchronous sleep — acceptable here as this is startup only
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+      const isLocked = err.code === 'SQLITE_BUSY' || err.code === 'SQLITE_LOCKED';
+      if (isLocked && attempt < maxAttempts) {
+        console.warn(`[DB] Locked (${err.code}), retrying in ${delayMs}ms (attempt ${attempt}/${maxAttempts})`);
+        sleep(delayMs);
       } else {
+        console.error(`[DB] Failed after ${attempt} attempt(s):`, err.message);
         throw err;
       }
     }
