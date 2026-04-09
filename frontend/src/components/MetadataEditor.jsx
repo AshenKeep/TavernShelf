@@ -76,7 +76,6 @@ export default function MetadataEditor({ item, onClose, onSave }) {
 
   const [saving, setSaving]               = useState(false);
   const [moduleModal, setModuleModal]     = useState(null); // { itemId, system }
-  const [modulePrompt, setModulePrompt]   = useState(null); // { itemId, suggestedName, expectedDir }
   const [writing, setWriting]             = useState(false);
   const [writeMsg, setWriteMsg]           = useState('');
   const [writeError, setWriteError]       = useState('');
@@ -155,13 +154,10 @@ export default function MetadataEditor({ item, onClose, onSave }) {
         coverUrl:    coverUrl || null,
         source:      'manual',
       });
-      // Check if organiser needs a module folder name
-      if (updated._organised?.needsModuleFolder) {
-        setModulePrompt({
-          itemId:       item.id,
-          suggestedName: updated._organised.suggestedName,
-          expectedDir:  updated._organised.expectedDir,
-        });
+      if (updated.needsModuleName) {
+        setModuleModal({ itemId: item.id, system: updated.system || form.system });
+        setSaving(false);
+        return;
       }
       onSave(updated);
     } catch (e) { setError(e.message); }
@@ -428,13 +424,12 @@ export default function MetadataEditor({ item, onClose, onSave }) {
 
       </div>
     </div>
-    {modulePrompt && (
+    {moduleModal && (
       <ModuleFolderModal
-        itemId={modulePrompt.itemId}
-        suggestedName={modulePrompt.suggestedName}
-        expectedDir={modulePrompt.expectedDir}
-        onClose={() => setModulePrompt(null)}
-        onMoved={() => setModulePrompt(null)}
+        itemId={moduleModal.itemId}
+        system={moduleModal.system}
+        onClose={() => setModuleModal(null)}
+        onMoved={(updated) => { setModuleModal(null); onSave(updated); }}
       />
     )}
   );

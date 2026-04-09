@@ -14,9 +14,9 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4.1.0
         with:
           node-version: 20
           cache: npm
@@ -34,9 +34,15 @@ jobs:
             src/routes/auth.js \
             src/routes/library.js \
             src/routes/uploads.js \
+            src/routes/admin.js \
+            src/routes/campaigns.js \
             src/services/coverService.js \
             src/services/libraryScanner.js \
-            src/services/metadataService.js
+            src/services/metadataService.js \
+            src/services/emailService.js \
+            src/services/fileMetadataService.js \
+            src/services/organiserService.js \
+            src/services/logger.js
 
   frontend:
     name: Frontend — install & build
@@ -45,9 +51,9 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4.1.0
         with:
           node-version: 20
           cache: npm
@@ -63,7 +69,7 @@ jobs:
     name: Docker — validate build compose
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
 
       - name: Validate docker-compose.build.yml
         run: |
