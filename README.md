@@ -33,7 +33,7 @@ TavernShelf lets you host your entire tabletop RPG collection for yourself and y
 ```yaml
 services:
   tavernshelf:
-    image: ghcr.io/ashenkeep/tavernshelf:latest
+    image: ghcr.io/ashenkeep/tavernshelf:0.0.4
     container_name: tavernshelf
     ports:
       - "7624:3000"
@@ -42,6 +42,7 @@ services:
       - ADMIN_EMAIL=you@example.com
       - ADMIN_PASSWORD=yourpassword
       - TRUST_PROXY=0
+      - DB_PATH=/app/data/pgdata
     volumes:
       - /absolute/path/to/your/ttrpg/library:/library
       - tavernshelf_covers:/app/covers
@@ -88,6 +89,7 @@ Open **http://localhost:7624** — sign in with your admin credentials.
 | `PORT` | | `7624` | Host port to expose TavernShelf on |
 | `JWT_EXPIRY` | | `7d` | How long login sessions last |
 | `TRUST_PROXY` | | `0` | Set to `1` when running behind a reverse proxy |
+| `DB_PATH` | | `/app/data/pgdata` | Directory where PGlite (embedded Postgres) stores its data |
 
 ---
 
@@ -272,15 +274,14 @@ Development happens on the `dev` branch. `main` is for stable releases.
 
 ---
 
-## Roadmap
+## Available Versions
 
-| Version | Planned |
-|---|---|
-| `v0.0.2` | Single container, GHCR image, reverse proxy support ✓ |
-| `v0.0.3` | Reading progress, bookmarks, last-read position |
-| `v0.0.4` | Collections and reading lists |
-| `v0.0.5` | Cover art upload, bulk metadata edit |
-| `v0.1.0` | Unraid/Synology community app templates |
+| Version | Image | Notes |
+|---|---|---|
+| `0.0.4` | `ghcr.io/ashenkeep/tavernshelf:0.0.4` | Current stable — PGlite database, backup/restore |
+| `0.0.3` | `ghcr.io/ashenkeep/tavernshelf:0.0.3` | SQLite — do not use on CIFS/NFS mounts |
+| `latest` | `ghcr.io/ashenkeep/tavernshelf:latest` | Always points to the latest stable release |
+| `dev` | `ghcr.io/ashenkeep/tavernshelf:dev` | Latest dev build — may be unstable |
 
 ---
 
@@ -288,7 +289,7 @@ Development happens on the `dev` branch. `main` is for stable releases.
 
 | Layer | Technology |
 |---|---|
-| Backend | Node.js 20, Express, better-sqlite3, sharp, yauzl |
+| Backend | Node.js 20, Express, sharp, yauzl |
 | Frontend | React 18, React Router 6, PDF.js, Vite (built into image) |
 | Container | Single Docker image (multi-stage build), GHCR |
-| Database | SQLite (WAL mode) |
+| Database | PGlite (embedded Postgres) — works on CIFS/NFS mounts |
