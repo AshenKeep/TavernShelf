@@ -88,7 +88,7 @@ async function addItem(db, fullPath, relPath, stat, ext) {
   // Auto-fetch metadata in background — non-blocking, only for PDFs and CBZs
   if (fileType === 'pdf' || fileType === 'cbz') {
     setImmediate(async () => {
-      await autoFetchMetadata(id, title, fullPath).catch(() => {});
+      await autoFetchMetadata(id, title, relPath).catch(() => {});
       // After metadata fetch, generate placeholder if we still have no cover
       if (fileType === 'pdf') {
         const db = await getDb();

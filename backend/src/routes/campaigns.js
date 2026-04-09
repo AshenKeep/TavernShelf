@@ -68,6 +68,7 @@ router.get('/', requireAuth, async (req, res) => {
     if (req.user.role === 'admin') {
       campaigns = await dbAll(db, `
         SELECT c.*, u.display_name as owner_name,
+          'owner' as my_role,
           (SELECT COUNT(*) FROM campaign_items ci WHERE ci.campaign_id = c.id) as item_count,
           (SELECT COUNT(*) FROM campaign_members cm WHERE cm.campaign_id = c.id) as member_count
         FROM campaigns c

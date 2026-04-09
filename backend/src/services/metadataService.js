@@ -1,4 +1,5 @@
 import { existsSync } from 'fs';
+import { readFileMetadata } from './fileMetadataService.js';
 import fetch from 'node-fetch';
 import { join } from 'path';
 import { getDb, dbGet, dbRun } from '../db/database.js';
@@ -135,7 +136,7 @@ export async function fetchMetadataByIsbn(isbn) {
 export async function autoFetchMetadata(itemId, title, filePath) {
   const db = await getDb();
   try {
-    const item = await dbGet(db, 'SELECT metadata_source, cover_path, locked_fields FROM library_items WHERE id = $1', [itemId]);
+    const item = await dbGet(db, 'SELECT metadata_source, cover_path, locked_fields, file_type FROM library_items WHERE id = $1', [itemId]);
     // Only auto-fetch if we haven't already fetched from an external source
     if (!item || item.metadata_source !== 'filename') return;
     const locked = JSON.parse(item.locked_fields || '[]');
@@ -143,17 +144,43 @@ export async function autoFetchMetadata(itemId, title, filePath) {
     logger.info('Metadata', 'Auto-fetching metadata', { title });
 
     let results = [];
+    let searchTitle = title;
 
-    // Try to extract ISBN from filename first
-    const isbnFromFilename = extractIsbnFromText(title);
-    if (isbnFromFilename) {
-      logger.info('Metadata', 'Found ISBN in filename', { isbn: isbnFromFilename });
-      results = await fetchMetadataByIsbn(isbnFromFilename);
+    // Step 1: try to read metadata embedded in the file itself
+    // This gives us a more accurate title/ISBN than the filename
+    if (['pdf', 'cbz'].includes(item.file_type)) {
+      try {
+        const fileMeta = await readFileMetadata(filePath);
+        if (fileMeta) {
+          // Use file's embedded title as search query if it looks more complete than the filename
+          if (fileMeta.title && fileMeta.title.length > 3) {
+            searchTitle = fileMeta.title;
+            logger.info('Metadata', 'Using embedded file title for search', { fileTitle: searchTitle });
+          }
+          // Check for ISBN in file description/keywords
+          const isbnFromFile = extractIsbnFromText(JSON.stringify(fileMeta));
+          if (isbnFromFile) {
+            logger.info('Metadata', 'Found ISBN in file metadata', { isbn: isbnFromFile });
+            results = await fetchMetadataByIsbn(isbnFromFile);
+          }
+        }
+      } catch (e) {
+        logger.warn('Metadata', 'Could not read file metadata', { error: e.message });
+      }
     }
 
-    // Fall back to title search if ISBN didn't work
+    // Step 2: try ISBN from filename/title if no results yet
     if (!results.length) {
-      results = await fetchMetadataByTitle(title);
+      const isbnFromFilename = extractIsbnFromText(title);
+      if (isbnFromFilename) {
+        logger.info('Metadata', 'Found ISBN in filename', { isbn: isbnFromFilename });
+        results = await fetchMetadataByIsbn(isbnFromFilename);
+      }
+    }
+
+    // Step 3: fall back to title search using best available title
+    if (!results.length) {
+      results = await fetchMetadataByTitle(searchTitle);
     }
 
     if (!results.length) {
