@@ -26,20 +26,11 @@ if (TRUST_PROXY) {
   console.log('[Boot] Proxy trust enabled');
 }
 
+// Disable CSP in production — Vite builds use hashed filenames and
+// inline scripts that conflict with strict CSP. Helmet's other protections remain.
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc:  ["'self'", "'unsafe-inline'", "'unsafe-eval'", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
-      workerSrc:  ["'self'", "blob:"],
-      styleSrc:   ["'self'", "'unsafe-inline'", "fonts.googleapis.com"],
-      fontSrc:    ["'self'", "fonts.gstatic.com"],
-      imgSrc:     ["'self'", "data:", "blob:", "covers.openlibrary.org", "books.google.com"],
-      connectSrc: ["'self'"],
-      objectSrc:  ["'none'"],
-    },
-  },
+  contentSecurityPolicy: false,
 }));
 
 app.use(cors({ origin: true, credentials: true }));
@@ -47,6 +38,7 @@ app.use(json({ limit: '10mb' }));
 app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 500 }));
 app.use('/api/auth/', rateLimit({ windowMs: 15 * 60 * 1000, max: 20 }));
 
+// ── API routes (before static so /api/* never hits the SPA fallback) ──
 app.use('/api/auth',    authRoutes);
 app.use('/api/library', libraryRoutes);
 app.use('/api/uploads', uploadRoutes);
@@ -56,14 +48,24 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', version: '0.0.4', uptime: Math.floor(process.uptime()) });
 });
 
+// ── Serve built React frontend ────────────────────────────
 const publicDir = join(__dirname, '..', 'public');
+console.log(`[Boot] Looking for frontend at: ${publicDir}`);
+console.log(`[Boot] Frontend exists: ${existsSync(publicDir)}`);
+
 if (existsSync(publicDir)) {
-  app.use(express.static(publicDir));
-  app.get('*', (req, res) => res.sendFile(join(publicDir, 'index.html')));
+  app.use(express.static(publicDir, { index: 'index.html' }));
+  // SPA fallback — must come after API routes and after static
+  app.use((req, res) => {
+    res.sendFile(join(publicDir, 'index.html'));
+  });
 } else {
-  app.get('/', (req, res) => res.json({ message: 'TavernShelf API v0.0.4 — run the frontend build' }));
+  app.use((req, res) => {
+    res.json({ message: 'TavernShelf API v0.0.4 — frontend not built' });
+  });
 }
 
+// ── Error handler ─────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('[Error]', err.message);
   if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'File too large (max 500 MB)' });
@@ -71,7 +73,6 @@ app.use((err, req, res, next) => {
 });
 
 async function start() {
-  // Initialise DB and run migrations before accepting requests
   const db = await getDb();
 
   const existing = await dbGet(db, "SELECT id FROM users WHERE role = 'admin'");
