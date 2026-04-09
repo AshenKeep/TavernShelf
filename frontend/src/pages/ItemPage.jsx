@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useApi } from '../hooks/useApi.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import MetadataEditor from '../components/MetadataEditor.jsx';
+import AddToCampaign from '../components/AddToCampaign.jsx';
 
 const Icon = ({ d, size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -27,6 +28,7 @@ export default function ItemPage() {
   const [item, setItem]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [showCampaign, setShowCampaign] = useState(false);
 
   useEffect(() => {
     get(`/library/items/${id}`)
@@ -131,6 +133,17 @@ export default function ItemPage() {
                 <span style={{ color: 'var(--text-1)', wordBreak: 'break-all' }}>{String(row.value)}</span>
               </div>
             ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Campaigns section */}
+      <div style={{ marginTop: 32, borderTop: '1px solid var(--border)', paddingTop: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+          <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 16, color: 'var(--text-0)', flex: 1 }}>Campaigns</h3>
+          <div style={{ position: 'relative' }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowCampaign(s => !s)}>+ Add to Campaign</button>
+            {showCampaign && <AddToCampaign item={item} onClose={() => setShowCampaign(false)} />}
           </div>
         </div>
       </div>

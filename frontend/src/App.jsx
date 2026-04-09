@@ -8,6 +8,8 @@ import ItemPage from './pages/ItemPage.jsx';
 import ReaderPage from './pages/ReaderPage.jsx';
 import UploadsPage from './pages/UploadsPage.jsx';
 import AdminPage from './pages/AdminPage.jsx';
+import CampaignListPage from './pages/CampaignListPage.jsx';
+import CampaignPage from './pages/CampaignPage.jsx';
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { user, loading } = useAuth();
@@ -32,7 +34,9 @@ function AppRoutes() {
         <Route index element={<LibraryPage />} />
         <Route path="/item/:id" element={<ItemPage />} />
         <Route path="/uploads"  element={<UploadsPage />} />
-        <Route path="/admin"    element={<ProtectedRoute adminOnly><AdminPage /></ProtectedRoute>} />
+        <Route path="/admin"       element={<ProtectedRoute adminOnly><AdminPage /></ProtectedRoute>} />
+        <Route path="/campaigns"    element={<CampaignListPage />} />
+        <Route path="/campaigns/:id" element={<CampaignPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>

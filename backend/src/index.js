@@ -17,7 +17,8 @@ import { logger } from './services/logger.js';
 import authRoutes    from './routes/auth.js';
 import libraryRoutes from './routes/library.js';
 import uploadRoutes  from './routes/uploads.js';
-import adminRoutes   from './routes/admin.js';
+import adminRoutes    from './routes/admin.js';
+import campaignRoutes from './routes/campaigns.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -55,10 +56,11 @@ app.use('/api/auth/', rateLimit({ windowMs: 15 * 60 * 1000, max: 20 }));
 app.use('/api/auth',    authRoutes);
 app.use('/api/library', libraryRoutes);
 app.use('/api/uploads', uploadRoutes);
-app.use('/api/admin',   adminRoutes);
+app.use('/api/admin',    adminRoutes);
+app.use('/api/campaigns', campaignRoutes);
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', version: '0.0.9', uptime: Math.floor(process.uptime()) });
+  res.json({ status: 'ok', version: '0.1.0', uptime: Math.floor(process.uptime()) });
 });
 
 // Serve cover images from the covers volume
@@ -76,7 +78,7 @@ if (existsSync(publicDir)) {
   app.use(express.static(publicDir, { index: 'index.html' }));
   app.use((req, res) => res.sendFile(join(publicDir, 'index.html')));
 } else {
-  app.use((req, res) => res.json({ message: 'TavernShelf API v0.0.9 — frontend not built' }));
+  app.use((req, res) => res.json({ message: 'TavernShelf API v0.1.0 — frontend not built' }));
 }
 
 // Error handler
@@ -96,7 +98,7 @@ process.on('uncaughtException', (err) => {
 });
 
 async function start() {
-  logger.info('Boot', 'TavernShelf v0.0.9 starting');
+  logger.info('Boot', 'TavernShelf v0.1.0 starting');
   const db = await getDb();
 
   const existing = await dbGet(db, "SELECT id FROM users WHERE role = 'admin'");
@@ -110,7 +112,7 @@ async function start() {
 
   app.listen(PORT, '0.0.0.0', () => {
     logger.info('Boot', `Listening on :${PORT}`, { library: process.env.LIBRARY_PATH, db: 'PGlite' });
-    console.log(`[TavernShelf] v0.0.9 listening on :${PORT}`);
+    console.log(`[TavernShelf] v0.1.0 listening on :${PORT}`);
     console.log(`[TavernShelf] Library: ${process.env.LIBRARY_PATH}`);
   });
 

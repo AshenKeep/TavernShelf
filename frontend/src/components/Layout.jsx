@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useAuth, appEvents } from '../context/AuthContext.jsx';
 import { useApi } from '../hooks/useApi.js';
 
-const VERSION = '0.0.9';
+const VERSION = '0.1.0';
 
 const Icon = ({ d, size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -16,7 +16,8 @@ const ICONS = {
   upload:  'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12',
   admin:   'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
   logout:  'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9',
-  folder:  'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z',
+  folder:   'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z',
+  campaign: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
   menu:    'M3 12h18M3 6h18M3 18h18',
   plus:    'M12 5v14M5 12h14',
 };
@@ -139,18 +140,21 @@ export default function Layout() {
   const [folders, setFolders] = useState([]);
   const [activeFolder, setActiveFolder] = useState(null);
   const [pendingCount, setPendingCount] = useState(0);
+  const [campaigns, setCampaigns] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [createModal, setCreateModal] = useState(null); // null | parentPath string
 
   const loadFolders = () => get('/library/folders').then(setFolders).catch(() => {});
   const loadPending = () => { if (isAdmin) get('/uploads?status=pending').then(q => setPendingCount(q.length)).catch(() => {}); };
+  const loadCampaigns = () => get('/campaigns').then(setCampaigns).catch(() => {});
 
   useEffect(() => {
     loadFolders();
     loadPending();
-    // Refresh pending count whenever an upload is reviewed
-    const unsub = appEvents.on('uploadReviewed', loadPending);
-    return unsub;
+    loadCampaigns();
+    const unsub1 = appEvents.on('uploadReviewed', loadPending);
+    const unsub2 = appEvents.on('campaignUpdated', loadCampaigns);
+    return () => { unsub1(); unsub2(); };
   }, [isAdmin]);
 
   const handleFolderSelect = (path) => {
@@ -194,7 +198,8 @@ export default function Layout() {
           {[
             { to: '/',        label: 'Library',  icon: ICONS.library },
             { to: '/uploads', label: 'Uploads',  icon: ICONS.upload, badge: pendingCount > 0 ? pendingCount : null },
-            ...(isAdmin ? [{ to: '/admin', label: 'Admin', icon: ICONS.admin }] : []),
+            { to: '/campaigns', label: 'Campaigns', icon: ICONS.campaign },
+    ...(isAdmin ? [{ to: '/admin', label: 'Admin', icon: ICONS.admin }] : []),
           ].map(item => (
             <NavLink key={item.to} to={item.to} end={item.to === '/'} style={({ isActive }) => ({
               display: 'flex', alignItems: 'center', gap: 9,
@@ -230,6 +235,27 @@ export default function Layout() {
             ))}
           </ul>
         </div>
+
+        {/* Campaign list */}
+        {campaigns.length > 0 && (
+          <div style={{ padding: '0 10px 10px', borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6, paddingLeft: 6 }}>
+              Campaigns
+            </div>
+            {campaigns.slice(0, 8).map(c => (
+              <NavLink key={c.id} to={`/campaigns/${c.id}`} style={({ isActive }) => ({
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '4px 6px', borderRadius: 4, marginBottom: 1, fontSize: 12,
+                color: isActive ? 'var(--text-0)' : 'var(--text-2)',
+                background: isActive ? 'var(--bg-3)' : 'transparent',
+                textDecoration: 'none', overflow: 'hidden',
+              })}>
+                <Icon d={ICONS.campaign} size={11} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{c.name}</span>
+              </NavLink>
+            ))}
+          </div>
+        )}
 
         {/* Footer */}
         <div style={{ padding: '10px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>

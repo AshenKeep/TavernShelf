@@ -5,6 +5,48 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.0] — 2026-04-09
+
+### Added — Campaigns
+
+A campaign is a named collection owned by a user. Each user manages their own campaigns, can invite other users, and organises library items within each campaign with statuses and notes.
+
+**Campaign management:**
+- Any user can create, rename, and delete their own campaigns
+- Campaigns page at `/campaigns` lists all campaigns the user owns or is invited to
+- Individual campaign page at `/campaigns/:id` with items grid and members list
+
+**Member roles:**
+- **Owner** — full control (invite, remove, edit, delete)
+- **Collaborator** — can add/remove items and update status/notes
+- **Viewer** — read-only access
+
+**Campaign items:**
+- Add books to campaigns from the book card (⚔ button) or from the item detail page
+- Per-item status: `Reading`, `Completed`, `Reference`, `Wishlist`
+- Per-item freetext notes
+- Status filter on campaign page
+- Remove items from campaign
+
+**Sidebar:**
+- Campaigns section in sidebar listing up to 8 of the user's campaigns for quick navigation
+
+**Backend:**
+- 3 new DB tables: `campaigns`, `campaign_members`, `campaign_items`
+- `GET/POST /api/campaigns` — list / create
+- `GET/PUT/DELETE /api/campaigns/:id` — detail / update / delete
+- `POST/PUT/DELETE /api/campaigns/:id/members/:userId` — invite / role change / remove
+- `GET/POST /api/campaigns/:id/items` — list / add
+- `PUT/DELETE /api/campaigns/:id/items/:itemId` — update status+notes / remove
+- `GET /api/campaigns/item/:itemId` — campaigns an item belongs to (for the dropdown)
+
+### Changed
+- Added D&D 5.5e to game systems list
+- Added Magic Items to content types list
+- BookCard hover now uses amber accent instead of purple
+
+---
+
 ## [0.0.9] — 2026-04-09
 
 ### Added

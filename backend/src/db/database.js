@@ -114,13 +114,46 @@ async function migrate(db) {
       created_at    BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
     );
 
-    CREATE INDEX IF NOT EXISTS idx_items_path      ON library_items(path);
-    CREATE INDEX IF NOT EXISTS idx_items_system    ON library_items(system);
-    CREATE INDEX IF NOT EXISTS idx_items_type      ON library_items(content_type);
-    CREATE INDEX IF NOT EXISTS idx_items_file_type ON library_items(file_type);
-    CREATE INDEX IF NOT EXISTS idx_folders_path    ON folders(path);
-    CREATE INDEX IF NOT EXISTS idx_folders_parent  ON folders(parent_id);
-    CREATE INDEX IF NOT EXISTS idx_queue_status    ON upload_queue(status);
+    CREATE TABLE IF NOT EXISTS campaigns (
+      id          TEXT PRIMARY KEY,
+      name        TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      owner_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at  BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
+      updated_at  BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+    );
+
+    CREATE TABLE IF NOT EXISTS campaign_members (
+      campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+      user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role        TEXT NOT NULL DEFAULT 'viewer',
+      invited_at  BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
+      PRIMARY KEY (campaign_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS campaign_items (
+      id          TEXT PRIMARY KEY,
+      campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+      item_id     TEXT NOT NULL REFERENCES library_items(id) ON DELETE CASCADE,
+      status      TEXT NOT NULL DEFAULT 'reference',
+      notes       TEXT DEFAULT '',
+      added_by    TEXT NOT NULL REFERENCES users(id),
+      added_at    BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
+      updated_at  BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
+      UNIQUE (campaign_id, item_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_items_path          ON library_items(path);
+    CREATE INDEX IF NOT EXISTS idx_items_system        ON library_items(system);
+    CREATE INDEX IF NOT EXISTS idx_items_type          ON library_items(content_type);
+    CREATE INDEX IF NOT EXISTS idx_items_file_type     ON library_items(file_type);
+    CREATE INDEX IF NOT EXISTS idx_folders_path        ON folders(path);
+    CREATE INDEX IF NOT EXISTS idx_folders_parent      ON folders(parent_id);
+    CREATE INDEX IF NOT EXISTS idx_queue_status        ON upload_queue(status);
+    CREATE INDEX IF NOT EXISTS idx_campaigns_owner     ON campaigns(owner_id);
+    CREATE INDEX IF NOT EXISTS idx_camp_members_user   ON campaign_members(user_id);
+    CREATE INDEX IF NOT EXISTS idx_camp_items_campaign ON campaign_items(campaign_id);
+    CREATE INDEX IF NOT EXISTS idx_camp_items_item     ON campaign_items(item_id);
   `);
   console.log('[DB] Schema ready');
 
