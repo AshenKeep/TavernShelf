@@ -189,6 +189,27 @@ export async function autoFetchMetadata(itemId, title, filePath) {
     }
 
     const best = results[0];
+
+    // Confidence check — only apply if the result title is a reasonable match
+    // For ISBN lookups we trust the result fully; for title searches we check similarity
+    const isIsbnResult = best.source.includes('isbn');
+    if (!isIsbnResult && best.title) {
+      const normalize = s => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+      const searchNorm = normalize(searchTitle);
+      const resultNorm = normalize(best.title);
+
+      // Check if enough words from our search appear in the result
+      const searchWords = searchNorm.split(' ').filter(w => w.length > 2);
+      const matchingWords = searchWords.filter(w => resultNorm.includes(w));
+      const matchRatio = searchWords.length > 0 ? matchingWords.length / searchWords.length : 0;
+
+      if (matchRatio < 0.5) {
+        logger.info('Metadata', 'Low confidence match — skipping auto-apply',
+          { search: searchTitle, found: best.title, matchRatio: matchRatio.toFixed(2) });
+        return;
+      }
+    }
+
     logger.info('Metadata', 'Auto-applying metadata', { title, source: best.source, found: best.title });
 
     // Download cover if available and we don't have one yet

@@ -105,32 +105,52 @@ async function addItem(db, fullPath, relPath, stat, ext) {
 }
 
 async function rebuildFolders(db) {
-  await dbRun(db, 'DELETE FROM folders');
+  // Build item counts from library_items
   const items = await dbAll(db, 'SELECT path FROM library_items');
-  const folderMap = new Map();
+  const folderCounts = new Map();
 
   for (const item of items) {
     let current = dirname(item.path);
     while (current && current !== '.') {
-      if (!folderMap.has(current)) folderMap.set(current, { count: 0, parent: dirname(current) });
-      folderMap.get(current).count++;
+      folderCounts.set(current, (folderCounts.get(current) || 0) + 1);
       current = dirname(current);
     }
-    if (!folderMap.has('.')) folderMap.set('.', { count: 0, parent: null });
-    folderMap.get('.').count++;
+    folderCounts.set('.', (folderCounts.get('.') || 0) + 1);
   }
 
-  const pathToId = new Map();
-  const ordered = [...folderMap.entries()].sort(([a], [b]) => a.split('/').length - b.split('/').length);
+  // Update item_count for folders that exist in DB
+  const existingFolders = await dbAll(db, 'SELECT id, path FROM folders');
+  const existingPaths = new Set(existingFolders.map(f => f.path));
 
-  for (const [path, info] of ordered) {
+  for (const folder of existingFolders) {
+    const count = folderCounts.get(folder.path) || 0;
+    await dbRun(db, 'UPDATE folders SET item_count = $1 WHERE id = $2', [count, folder.id]);
+  }
+
+  // Insert new folders that have items but aren't in DB yet
+  const pathToId = new Map(existingFolders.map(f => [f.path, f.id]));
+  const newPaths = [...folderCounts.keys()]
+    .filter(p => !existingPaths.has(p))
+    .sort((a, b) => a.split('/').length - b.split('/').length);
+
+  for (const path of newPaths) {
     const id = uuid();
     const name = basename(path) || 'Library';
-    const parentId = info.parent && info.parent !== '.' ? pathToId.get(info.parent) : null;
+    const parentPath = dirname(path);
+    const parentId = parentPath && parentPath !== '.' ? pathToId.get(parentPath) : null;
     await dbRun(db,
-      'INSERT INTO folders (id, path, name, parent_id, item_count, created_at) VALUES ($1,$2,$3,$4,$5,$6)',
-      [id, path, name, parentId, info.count, now()]
+      'INSERT INTO folders (id, path, name, parent_id, item_count, created_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (path) DO NOTHING',
+      [id, path, name, parentId, folderCounts.get(path) || 0, now()]
     );
     pathToId.set(path, id);
+  }
+
+  // Remove DB folders whose directories no longer exist on disk
+  for (const folder of existingFolders) {
+    if (folder.path === '.') continue;
+    const absPath = join(LIBRARY_PATH, folder.path);
+    if (!existsSync(absPath)) {
+      await dbRun(db, 'DELETE FROM folders WHERE id = $1', [folder.id]);
+    }
   }
 }

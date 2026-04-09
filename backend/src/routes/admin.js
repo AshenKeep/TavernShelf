@@ -185,8 +185,29 @@ router.post('/folders', requireAuth, requireRole('admin'), async (req, res) => {
     mkdirSync(absPath, { recursive: true });
     logger.event('Admin', 'Folder created', { path: safe, by: req.user.email });
 
-    // Trigger rescan so the sidebar updates
-    scanLibrary().catch(e => logger.error('Scanner', 'Post-folder-create scan failed', { error: e.message }));
+    // Insert folder directly into DB so it shows up in the upload dropdown immediately
+    // even before any files are added to it
+    const db = await getDb();
+    const { v4: uuid } = await import('uuid');
+    const segments = safe.split('/');
+    let parentId = null;
+
+    // Ensure all ancestor folders exist in DB too
+    for (let i = 0; i < segments.length; i++) {
+      const segPath = segments.slice(0, i + 1).join('/');
+      const existing = await dbGet(db, 'SELECT id FROM folders WHERE path = $1', [segPath]);
+      if (existing) {
+        parentId = existing.id;
+      } else {
+        const id = uuid();
+        await dbRun(db,
+          'INSERT INTO folders (id, path, name, parent_id, item_count, created_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (path) DO NOTHING',
+          [id, segPath, segments[i], parentId, 0, Math.floor(Date.now()/1000)]
+        );
+        parentId = id;
+      }
+    }
+
     res.status(201).json({ message: 'Folder created', path: safe });
   } catch (e) { logger.error('Admin', 'Folder create error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
 });
