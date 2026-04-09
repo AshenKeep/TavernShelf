@@ -142,6 +142,7 @@ export default function Layout() {
   const [folders, setFolders] = useState([]);
   const [activeFolder, setActiveFolder] = useState(null);
   const [pendingCount, setPendingCount] = useState(0);
+  const [scanning, setScanning]         = useState(false);
   const [campaigns, setCampaigns] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [createModal, setCreateModal] = useState(null); // null | parentPath string
@@ -149,6 +150,14 @@ export default function Layout() {
   const loadFolders = () => get('/library/folders').then(setFolders).catch(() => {});
   const loadPending = () => { if (isAdmin) get('/uploads?status=pending').then(q => setPendingCount(q.length)).catch(() => {}); };
   const loadCampaigns = () => get('/campaigns').then(setCampaigns).catch(() => {});
+  const syncLibrary = async () => {
+    setScanning(true);
+    try {
+      await post('/library/scan', {});
+      // Reload folders after a short delay to let scan finish
+      setTimeout(() => { loadFolders(); setScanning(false); }, 3000);
+    } catch { setScanning(false); }
+  };
 
   useEffect(() => {
     loadFolders();

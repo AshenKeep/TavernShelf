@@ -792,13 +792,28 @@ export default function AdminPage() {
       )}
 
       {tab === 'library' && (
-        <div className="card" style={{ padding: 20 }}>
-          <h3 style={{ fontFamily: 'var(--font-display)', color: 'var(--text-0)', marginBottom: 8, fontSize: 15 }}>Library Scanner</h3>
-          <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14 }}>Re-scans your library folder. Runs automatically on startup.</p>
-          <button className="btn btn-primary" onClick={triggerScan} disabled={scanning}>
-            {scanning ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Scanning…</> : '↺ Trigger Scan'}
-          </button>
-          {scanMsg && <div style={{ marginTop: 10, fontSize: 13, color: 'var(--green-hi)' }}>{scanMsg}</div>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="card" style={{ padding: 20 }}>
+            <h3 style={{ fontFamily: 'var(--font-display)', color: 'var(--text-0)', marginBottom: 8, fontSize: 15 }}>Library Scanner</h3>
+            <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 6, lineHeight: 1.6 }}>
+              Re-scans your library folder for new, moved, or deleted files. Runs automatically on startup and every 30 minutes.
+            </p>
+            <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14, lineHeight: 1.6 }}>
+              If you've deleted, moved, or renamed folders outside of TavernShelf, run a scan to update the sidebar.
+            </p>
+            <button className="btn btn-primary" onClick={triggerScan} disabled={scanning}>
+              {scanning ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Scanning…</> : '↺ Scan Library Now'}
+            </button>
+            {scanMsg && <div style={{ marginTop: 10, fontSize: 13, color: 'var(--green-hi)' }}>{scanMsg}</div>}
+          </div>
+          <div className="card" style={{ padding: 16, background: 'rgba(200,136,42,0.06)', border: '1px solid rgba(200,136,42,0.2)' }}>
+            <div style={{ fontSize: 13, color: 'var(--amber-hi)', fontWeight: 500, marginBottom: 6 }}>
+              💡 Tip — Sidebar sync button
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6 }}>
+              The <strong style={{ color: 'var(--text-1)' }}>↺</strong> button next to "Folders" in the sidebar triggers an instant sync from any page — you don't need to come here. After clicking it, wait a few seconds for the scan to complete, then the sidebar will refresh.
+            </div>
+          </div>
         </div>
       )}
 

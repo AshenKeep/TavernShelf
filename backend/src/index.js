@@ -119,6 +119,12 @@ async function start() {
   setTimeout(() => {
     scanLibrary().catch(e => logger.error('Scanner', 'Initial scan failed', { error: e.message }));
   }, 2000);
+
+  // Periodic rescan every 30 minutes to pick up external file system changes
+  // (deletions, moves done outside TavernShelf)
+  setInterval(() => {
+    scanLibrary().catch(e => logger.error('Scanner', 'Periodic scan failed', { error: e.message }));
+  }, 30 * 60 * 1000);
 }
 
 start().catch(e => {
