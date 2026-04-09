@@ -12,6 +12,7 @@ import { v4 as uuid } from 'uuid';
 import { PORT, NODE_ENV, ADMIN_EMAIL, ADMIN_PASSWORD, TRUST_PROXY } from './config.js';
 import { getDb, dbGet, dbRun } from './db/database.js';
 import { scanLibrary } from './services/libraryScanner.js';
+import { logger } from './services/logger.js';
 
 import authRoutes    from './routes/auth.js';
 import libraryRoutes from './routes/library.js';
@@ -23,58 +24,77 @@ const app = express();
 
 if (TRUST_PROXY) {
   app.set('trust proxy', 1);
-  console.log('[Boot] Proxy trust enabled');
+  logger.info('Boot', 'Proxy trust enabled');
 }
 
-// Minimal Helmet — disable everything that interferes with serving
-// a React SPA behind a reverse proxy (Tailscale, nginx, Cloudflare)
 app.use(helmet({
-  contentSecurityPolicy:          false,
-  crossOriginEmbedderPolicy:      false,
-  crossOriginOpenerPolicy:        false,
-  crossOriginResourcePolicy:      false,
-  originAgentCluster:             false,
+  contentSecurityPolicy:     false,
+  crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy:   false,
+  crossOriginResourcePolicy: false,
+  originAgentCluster:        false,
 }));
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(json({ limit: '10mb' }));
+
+// HTTP request logging
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const ms = Date.now() - start;
+    const level = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info';
+    logger[level]('HTTP', `${req.method} ${req.path} ${res.statusCode}`, { ms, ip: req.ip });
+  });
+  next();
+});
+
 app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 500 }));
 app.use('/api/auth/', rateLimit({ windowMs: 15 * 60 * 1000, max: 20 }));
 
-// ── API routes ────────────────────────────────────────────
 app.use('/api/auth',    authRoutes);
 app.use('/api/library', libraryRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/admin',   adminRoutes);
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', version: '0.0.4', uptime: Math.floor(process.uptime()) });
+  res.json({ status: 'ok', version: '0.0.5', uptime: Math.floor(process.uptime()) });
 });
 
-// ── Serve built React frontend ────────────────────────────
+// Serve built React frontend
 const publicDir = join(__dirname, '..', 'public');
-console.log(`[Boot] Frontend dir: ${publicDir} (exists: ${existsSync(publicDir)})`);
+logger.info('Boot', `Frontend dir: ${publicDir} (exists: ${existsSync(publicDir)})`);
 
 if (existsSync(publicDir)) {
   app.use(express.static(publicDir, { index: 'index.html' }));
   app.use((req, res) => res.sendFile(join(publicDir, 'index.html')));
 } else {
-  app.use((req, res) => res.json({ message: 'TavernShelf API v0.0.4 — frontend not built' }));
+  app.use((req, res) => res.json({ message: 'TavernShelf API v0.0.5 — frontend not built' }));
 }
 
-// ── Error handler ─────────────────────────────────────────
+// Error handler
 app.use((err, req, res, next) => {
-  console.error('[Error]', err.message);
+  logger.error('HTTP', err.message, { path: req.path, stack: err.stack?.split('\n')[1]?.trim() });
   if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'File too large (max 500 MB)' });
   res.status(500).json({ error: NODE_ENV === 'development' ? err.message : 'Internal server error' });
 });
 
+// Catch unhandled promise rejections
+process.on('unhandledRejection', (reason) => {
+  logger.error('Process', 'Unhandled rejection', { reason: String(reason) });
+});
+
+process.on('uncaughtException', (err) => {
+  logger.error('Process', 'Uncaught exception', { message: err.message });
+});
+
 async function start() {
+  logger.info('Boot', 'TavernShelf v0.0.5 starting');
   const db = await getDb();
 
   const existing = await dbGet(db, "SELECT id FROM users WHERE role = 'admin'");
   if (!existing) {
-    console.log('[Boot] Creating admin account:', ADMIN_EMAIL);
+    logger.info('Boot', 'Creating admin account', { email: ADMIN_EMAIL });
     await dbRun(db,
       'INSERT INTO users (id, email, password, display_name, role, created_at) VALUES ($1,$2,$3,$4,$5,$6)',
       [uuid(), ADMIN_EMAIL, bcrypt.hashSync(ADMIN_PASSWORD, 12), 'Admin', 'admin', Math.floor(Date.now() / 1000)]
@@ -82,17 +102,18 @@ async function start() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[TavernShelf] v0.0.4 listening on :${PORT}`);
+    logger.info('Boot', `Listening on :${PORT}`, { library: process.env.LIBRARY_PATH, db: 'PGlite' });
+    console.log(`[TavernShelf] v0.0.5 listening on :${PORT}`);
     console.log(`[TavernShelf] Library: ${process.env.LIBRARY_PATH}`);
-    console.log(`[TavernShelf] DB engine: PGlite (embedded Postgres)`);
   });
 
   setTimeout(() => {
-    scanLibrary().catch(e => console.error('[Boot] Initial scan failed:', e));
+    scanLibrary().catch(e => logger.error('Scanner', 'Initial scan failed', { error: e.message }));
   }, 2000);
 }
 
 start().catch(e => {
+  logger.error('Boot', 'Fatal error', { error: e.message });
   console.error('[Boot] Fatal error:', e);
   process.exit(1);
 });

@@ -5,6 +5,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.0.5] — 2026-04-09
+
+### Added
+- **Error & event logging** — all server events written to daily rotating log files in `/app/data/logs/`. 7-day retention, automatic rotation
+- **Live log viewer** in Admin → Logs tab — streams events in real time via Server-Sent Events, colour-coded by level (ERROR/WARN/INFO/EVENT), last 100 lines shown on connect
+- **Log file download** — download any of the last 7 days of logs directly from the admin UI
+- **Folder creation** — admins can create new folders on disk from the sidebar (+ button per folder for subfolders, + button at top for root folders). Triggers a library rescan automatically
+- Logging added to all routes: login attempts, registrations, invite creation, file submissions, approvals, rejections, scan results, metadata updates, errors
+
+### Changed
+- **Full tavern GUI reskin** — warm ambers, browns, stone greys, parchment tones replace the previous purple/dark theme
+- **New logo** — heraldic shield with colour-coded bookshelves and tankard centrepiece (placeholder until custom artwork)
+- **Version display fixed** — sidebar now shows correct version (v0.0.5) pulled from a single constant, not hardcoded to v0.0.1
+- Nav active state now shows amber left-border accent instead of background highlight
+
+### Fixed
+- Version hardcoded as v0.0.1 in sidebar — now reads from VERSION constant
+
+---
+
 ## [0.0.4] — 2026-04-08
 
 ### Changed

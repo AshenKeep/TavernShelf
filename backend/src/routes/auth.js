@@ -5,11 +5,11 @@ import { v4 as uuid } from 'uuid';
 import { getDb, dbGet, dbRun, dbAll } from '../db/database.js';
 import { JWT_SECRET, JWT_EXPIRY } from '../config.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
+import { logger } from '../services/logger.js';
 
 const router = Router();
 const now = () => Math.floor(Date.now() / 1000);
 
-// POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -17,21 +17,22 @@ router.post('/login', async (req, res) => {
 
     const db = await getDb();
     const user = await dbGet(db, 'SELECT * FROM users WHERE email = $1', [email.toLowerCase().trim()]);
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-
-    if (!bcrypt.compareSync(password, user.password)) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!user || !bcrypt.compareSync(password, user.password)) {
+      logger.warn('Auth', 'Failed login attempt', { email });
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
 
     await dbRun(db, 'UPDATE users SET last_login = $1 WHERE id = $2', [now(), user.id]);
+    logger.event('Auth', 'User logged in', { email: user.email, role: user.role });
 
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role, displayName: user.display_name },
       JWT_SECRET, { expiresIn: JWT_EXPIRY }
     );
     res.json({ token, user: { id: user.id, email: user.email, role: user.role, displayName: user.display_name } });
-  } catch (e) { console.error('[Auth] Login:', e.message); res.status(500).json({ error: 'Server error' }); }
+  } catch (e) { logger.error('Auth', 'Login error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
 });
 
-// POST /api/auth/register
 router.post('/register', async (req, res) => {
   try {
     const { email, password, displayName, inviteToken } = req.body;
@@ -54,11 +55,11 @@ router.post('/register', async (req, res) => {
       [id, email.toLowerCase().trim(), bcrypt.hashSync(password, 12), displayName, invite.role, now()]
     );
     await dbRun(db, 'UPDATE invite_tokens SET used_by=$1, used_at=$2 WHERE token=$3', [id, now(), inviteToken]);
+    logger.event('Auth', 'New user registered', { email, role: invite.role });
     res.status(201).json({ message: 'Account created. You can now log in.' });
-  } catch (e) { console.error('[Auth] Register:', e.message); res.status(500).json({ error: 'Server error' }); }
+  } catch (e) { logger.error('Auth', 'Register error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
 });
 
-// POST /api/auth/invite (admin only)
 router.post('/invite', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     const { role = 'member', expiresInDays = 7 } = req.body;
@@ -72,11 +73,11 @@ router.post('/invite', requireAuth, requireRole('admin'), async (req, res) => {
       'INSERT INTO invite_tokens (token, created_by, role, expires_at, created_at) VALUES ($1,$2,$3,$4,$5)',
       [token, req.user.id, role, expiresAt, now()]
     );
+    logger.event('Auth', 'Invite token created', { by: req.user.email, role, expiresInDays });
     res.json({ token, role, expiresAt });
-  } catch (e) { console.error('[Auth] Invite:', e.message); res.status(500).json({ error: 'Server error' }); }
+  } catch (e) { logger.error('Auth', 'Invite error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
 });
 
-// GET /api/auth/invites (admin only)
 router.get('/invites', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     const db = await getDb();
@@ -87,10 +88,9 @@ router.get('/invites', requireAuth, requireRole('admin'), async (req, res) => {
       ORDER BY it.created_at DESC LIMIT 50
     `);
     res.json(invites);
-  } catch (e) { console.error('[Auth] Invites:', e.message); res.status(500).json({ error: 'Server error' }); }
+  } catch (e) { logger.error('Auth', 'Invites list error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
 });
 
-// GET /api/auth/me
 router.get('/me', requireAuth, async (req, res) => {
   try {
     const db = await getDb();
@@ -100,7 +100,7 @@ router.get('/me', requireAuth, async (req, res) => {
     );
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json(user);
-  } catch (e) { console.error('[Auth] Me:', e.message); res.status(500).json({ error: 'Server error' }); }
+  } catch (e) { logger.error('Auth', 'Me error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
 });
 
 export default router;

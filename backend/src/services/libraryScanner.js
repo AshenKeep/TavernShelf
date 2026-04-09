@@ -4,15 +4,16 @@ import { v4 as uuid } from 'uuid';
 import { getDb, dbGet, dbRun, dbAll } from '../db/database.js';
 import { LIBRARY_PATH, SUPPORTED_EXTENSIONS, FILE_TYPE_MAP } from '../config.js';
 import { generateCover } from './coverService.js';
+import { logger } from './logger.js';
 
 const now = () => Math.floor(Date.now() / 1000);
 
 export async function scanLibrary() {
-  console.log(`[Scanner] Starting scan: ${LIBRARY_PATH}`);
+  logger.event('Scanner', 'Library scan started', { path: LIBRARY_PATH });
   const db = await getDb();
 
   if (!existsSync(LIBRARY_PATH)) {
-    console.warn(`[Scanner] Library path does not exist: ${LIBRARY_PATH}`);
+    logger.warn('Scanner', 'Library path does not exist', { path: LIBRARY_PATH });
     return { added: 0, updated: 0, removed: 0 };
   }
 
@@ -21,7 +22,6 @@ export async function scanLibrary() {
 
   await walkDir(LIBRARY_PATH, db, foundPaths, stats);
 
-  // Remove entries for files no longer on disk
   const allItems = await dbAll(db, 'SELECT id, path FROM library_items');
   for (const item of allItems) {
     if (!foundPaths.has(item.path) || !existsSync(join(LIBRARY_PATH, item.path))) {
@@ -31,13 +31,16 @@ export async function scanLibrary() {
   }
 
   await rebuildFolders(db);
-  console.log(`[Scanner] Done. Added: ${stats.added}, Updated: ${stats.updated}, Removed: ${stats.removed}`);
+  logger.event('Scanner', 'Library scan complete', stats);
   return stats;
 }
 
 async function walkDir(dirPath, db, foundPaths, stats) {
   let entries;
-  try { entries = readdirSync(dirPath); } catch { return; }
+  try { entries = readdirSync(dirPath); } catch (e) {
+    logger.warn('Scanner', 'Cannot read directory', { path: dirPath, error: e.message });
+    return;
+  }
 
   for (const entry of entries) {
     const fullPath = join(dirPath, entry);
@@ -54,13 +57,11 @@ async function walkDir(dirPath, db, foundPaths, stats) {
       foundPaths.add(relPath);
 
       const existing = await dbGet(db, 'SELECT id, file_size FROM library_items WHERE path = $1', [relPath]);
-
       if (!existing) {
         await addItem(db, fullPath, relPath, stat, ext);
         stats.added++;
       } else if (parseInt(existing.file_size) !== stat.size) {
-        await dbRun(db, 'UPDATE library_items SET file_size=$1, updated_at=$2 WHERE path=$3',
-          [stat.size, now(), relPath]);
+        await dbRun(db, 'UPDATE library_items SET file_size=$1, updated_at=$2 WHERE path=$3', [stat.size, now(), relPath]);
         stats.updated++;
       }
     }
@@ -75,7 +76,7 @@ async function addItem(db, fullPath, relPath, stat, ext) {
 
   let coverPath = null;
   try { coverPath = await generateCover(fullPath, id, fileType); }
-  catch (e) { console.warn(`[Scanner] Cover failed for ${filename}:`, e.message); }
+  catch (e) { logger.warn('Scanner', 'Cover generation failed', { filename, error: e.message }); }
 
   await dbRun(db, `
     INSERT INTO library_items
@@ -86,7 +87,6 @@ async function addItem(db, fullPath, relPath, stat, ext) {
 
 async function rebuildFolders(db) {
   await dbRun(db, 'DELETE FROM folders');
-
   const items = await dbAll(db, 'SELECT path FROM library_items');
   const folderMap = new Map();
 

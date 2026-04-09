@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useApi } from '../hooks/useApi.js';
 
+const VERSION = '0.0.5';
+
 const Icon = ({ d, size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <path d={d} />
@@ -10,45 +12,123 @@ const Icon = ({ d, size = 18 }) => (
 );
 
 const ICONS = {
-  library:  'M4 19.5A2.5 2.5 0 016.5 17H20M4 19.5A2.5 2.5 0 014 17V5a2 2 0 012-2h14a2 2 0 012 2v12',
-  upload:   'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12',
-  admin:    'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
-  logout:   'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9',
-  chevron:  'M9 18l6-6-6-6',
-  folder:   'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z',
-  menu:     'M3 12h18M3 6h18M3 18h18',
-  sword:    'M14.5 17.5L3 6V3h3l11.5 11.5M13 19l6-6M2 22l5-5',
+  library: 'M4 19.5A2.5 2.5 0 016.5 17H20M4 19.5A2.5 2.5 0 014 17V5a2 2 0 012-2h14a2 2 0 012 2v12',
+  upload:  'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12',
+  admin:   'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
+  logout:  'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9',
+  folder:  'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z',
+  menu:    'M3 12h18M3 6h18M3 18h18',
+  plus:    'M12 5v14M5 12h14',
 };
 
-function FolderTree({ folders, activeFolder, onSelect, depth = 0 }) {
-  const [open, setOpen] = useState(depth === 0);
-  if (!folders?.length) return null;
+// TavernShelf logo SVG — shield with shelves and tankard
+function Logo({ size = 32 }) {
   return (
-    <ul style={{ listStyle: 'none', paddingLeft: depth > 0 ? 12 : 0 }}>
-      {folders.map(f => (
-        <li key={f.id}>
-          <div
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '4px 8px', borderRadius: 6, cursor: 'pointer',
-              color: activeFolder === f.path ? 'var(--purple-hi)' : 'var(--text-2)',
-              background: activeFolder === f.path ? 'rgba(139,107,200,0.12)' : 'transparent',
-              fontSize: 13,
-            }}
-            onClick={() => { onSelect(f.path); if (f.children?.length) setOpen(o => !o); }}
-          >
-            <Icon d={ICONS.folder} size={13} />
-            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {f.name}
-            </span>
-            <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{f.item_count}</span>
-          </div>
-          {open && f.children?.length > 0 && (
-            <FolderTree folders={f.children} activeFolder={activeFolder} onSelect={onSelect} depth={depth + 1} />
-          )}
-        </li>
+    <svg width={size} height={size} viewBox="0 0 100 120" fill="none">
+      <path d="M50 5 L95 5 L95 65 Q72 95 50 105 Q28 95 5 65 L5 5 Z" fill="#3d2410" stroke="#c8a050" strokeWidth="2"/>
+      <line x1="10" y1="42" x2="90" y2="42" stroke="#7a5228" strokeWidth="2"/>
+      <line x1="10" y1="62" x2="90" y2="62" stroke="#7a5228" strokeWidth="2"/>
+      {[14,24,33,42,51,60,69,78].map((x,i) => (
+        <rect key={i} x={x} y={i%2===0?26:24} width={8} height={i%2===0?16:18} rx="1"
+          fill={['#8b2020','#c88820','#284880','#386040','#702880','#8b2020','#c88820','#284880'][i]}/>
       ))}
-    </ul>
+      {[14,23,32,42,51,60,70,79].map((x,i) => (
+        <rect key={i} x={x} y={i%2===0?46:44} width={8} height={i%2===0?16:18} rx="1"
+          fill={['#386040','#8b2020','#c88820','#702880','#284880','#386040','#8b2020','#c88820'][i]}/>
+      ))}
+      <rect x="35" y="70" width="30" height="24" rx="2" fill="#7a5228"/>
+      <rect x="35" y="70" width="30" height="5" rx="1" fill="#5a3a18"/>
+      <path d="M65 75 Q78 75 78 83 Q78 91 65 91" fill="none" stroke="#5a3a18" strokeWidth="5" strokeLinecap="round"/>
+      <ellipse cx="50" cy="70" rx="15" ry="4" fill="#d4c890"/>
+    </svg>
+  );
+}
+
+function FolderNode({ folder, activeFolder, onSelect, onCreateChild, isAdmin, depth = 0 }) {
+  const [open, setOpen] = useState(depth === 0);
+  return (
+    <li style={{ listStyle: 'none', paddingLeft: depth > 0 ? 10 : 0 }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 4,
+        padding: '3px 6px', borderRadius: 4, cursor: 'pointer',
+        color: activeFolder === folder.path ? 'var(--amber-hi)' : 'var(--text-2)',
+        background: activeFolder === folder.path ? 'rgba(200,136,42,0.12)' : 'transparent',
+        fontSize: 13,
+      }}>
+        <span style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 5, overflow: 'hidden' }}
+          onClick={() => { onSelect(folder.path); if (folder.children?.length) setOpen(o => !o); }}>
+          <Icon d={ICONS.folder} size={12} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{folder.name}</span>
+          <span style={{ fontSize: 10, color: 'var(--text-3)', flexShrink: 0 }}>{folder.item_count}</span>
+        </span>
+        {isAdmin && (
+          <button title="Create subfolder" onClick={e => { e.stopPropagation(); onCreateChild(folder.path); }}
+            style={{ opacity: 0, padding: '1px 3px', borderRadius: 3, fontSize: 14, color: 'var(--amber)', lineHeight: 1 }}
+            onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+            onMouseLeave={e => e.currentTarget.style.opacity = '0'}
+            className="_folder-add-btn">+</button>
+        )}
+      </div>
+      {open && folder.children?.length > 0 && (
+        <ul style={{ paddingLeft: 0 }}>
+          {folder.children.map(c => (
+            <FolderNode key={c.id} folder={c} activeFolder={activeFolder} onSelect={onSelect}
+              onCreateChild={onCreateChild} isAdmin={isAdmin} depth={depth + 1} />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+function CreateFolderModal({ parentPath, onClose, onCreated }) {
+  const { post } = useApi();
+  const [name, setName] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setLoading(true); setError('');
+    try {
+      const path = parentPath ? `${parentPath}/${name.trim()}` : name.trim();
+      await post('/admin/folders', { path });
+      onCreated();
+      onClose();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 200,
+      background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(3px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+    }} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="card" style={{ width: '100%', maxWidth: 360, padding: 24 }}>
+        <h3 style={{ fontFamily: 'var(--font-display)', color: 'var(--text-0)', marginBottom: 6, fontSize: 16 }}>
+          New Folder
+        </h3>
+        {parentPath && (
+          <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 14 }}>Inside: {parentPath}</p>
+        )}
+        <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <input autoFocus placeholder="Folder name" value={name}
+            onChange={e => setName(e.target.value)} />
+          {error && <div style={{ fontSize: 12, color: 'var(--red-hi)' }}>{error}</div>}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn-primary btn-sm" disabled={loading || !name.trim()}>
+              {loading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : 'Create'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
@@ -60,81 +140,98 @@ export default function Layout() {
   const [activeFolder, setActiveFolder] = useState(null);
   const [pendingCount, setPendingCount] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [createModal, setCreateModal] = useState(null); // null | parentPath string
+
+  const loadFolders = () => get('/library/folders').then(setFolders).catch(() => {});
 
   useEffect(() => {
-    get('/library/folders').then(setFolders).catch(() => {});
-    if (isAdmin) {
-      get('/uploads?status=pending').then(q => setPendingCount(q.length)).catch(() => {});
-    }
+    loadFolders();
+    if (isAdmin) get('/uploads?status=pending').then(q => setPendingCount(q.length)).catch(() => {});
   }, [isAdmin]);
 
   const handleFolderSelect = (path) => {
-    setActiveFolder(path === activeFolder ? null : path);
-    navigate(`/?folder=${encodeURIComponent(path)}`);
+    const next = path === activeFolder ? null : path;
+    setActiveFolder(next);
+    navigate(next ? `/?folder=${encodeURIComponent(path)}` : '/');
   };
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+      {/* Add hover style for folder + buttons */}
+      <style>{`._folder-add-btn:hover { opacity: 1 !important; background: rgba(200,136,42,0.15); }`}</style>
+
       {/* Sidebar */}
       <aside style={{
         width: sidebarOpen ? 'var(--sidebar-w)' : 0,
         minWidth: sidebarOpen ? 'var(--sidebar-w)' : 0,
-        overflow: 'hidden',
+        overflow: 'hidden', flexShrink: 0,
         background: 'var(--bg-1)',
         borderRight: '1px solid var(--border)',
         display: 'flex', flexDirection: 'column',
         transition: 'width 0.2s, min-width 0.2s',
-        flexShrink: 0,
       }}>
         {/* Logo */}
-        <div style={{ padding: '20px 20px 12px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+        <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Icon d={ICONS.sword} size={20} style={{ color: 'var(--purple)' }} />
-            <span style={{ fontFamily: 'var(--font-display)', fontSize: 17, color: 'var(--text-0)', letterSpacing: '0.03em' }}>
-              TavernShelf
-            </span>
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4, paddingLeft: 30 }}>
-            {user?.display_name}
+            <Logo size={36} />
+            <div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, color: 'var(--text-0)', letterSpacing: '0.04em' }}>
+                TavernShelf
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text-3)', letterSpacing: '0.06em' }}>
+                {user?.display_name}
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Nav */}
-        <nav style={{ padding: '12px 12px 0', flexShrink: 0 }}>
+        <nav style={{ padding: '10px 10px 0', flexShrink: 0 }}>
           {[
             { to: '/',        label: 'Library',  icon: ICONS.library },
-            { to: '/uploads', label: 'Uploads',  icon: ICONS.upload,
-              badge: pendingCount > 0 ? pendingCount : null },
+            { to: '/uploads', label: 'Uploads',  icon: ICONS.upload, badge: pendingCount > 0 ? pendingCount : null },
             ...(isAdmin ? [{ to: '/admin', label: 'Admin', icon: ICONS.admin }] : []),
           ].map(item => (
             <NavLink key={item.to} to={item.to} end={item.to === '/'} style={({ isActive }) => ({
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '8px 10px', borderRadius: 8, marginBottom: 2,
+              display: 'flex', alignItems: 'center', gap: 9,
+              padding: '7px 10px', borderRadius: 6, marginBottom: 2,
               color: isActive ? 'var(--text-0)' : 'var(--text-2)',
               background: isActive ? 'var(--bg-3)' : 'transparent',
+              borderLeft: isActive ? '2px solid var(--amber)' : '2px solid transparent',
               fontSize: 13, fontWeight: 500, transition: 'all 0.1s',
             })}>
-              <Icon d={item.icon} size={15} />
+              <Icon d={item.icon} size={14} />
               <span style={{ flex: 1 }}>{item.label}</span>
-              {item.badge && (
-                <span className="badge badge-gold" style={{ fontSize: 10, padding: '1px 6px' }}>
-                  {item.badge}
-                </span>
-              )}
+              {item.badge && <span className="badge badge-amber" style={{ fontSize: 10, padding: '1px 6px' }}>{item.badge}</span>}
             </NavLink>
           ))}
         </nav>
 
         {/* Folder tree */}
-        <div style={{ flex: 1, overflow: 'auto', padding: '12px 12px 0' }}>
-          <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 8 }}>
-            Folders
+        <div style={{ flex: 1, overflow: 'auto', padding: '12px 10px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8, paddingLeft: 6 }}>
+            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.08em', textTransform: 'uppercase', flex: 1 }}>
+              Folders
+            </span>
+            {isAdmin && (
+              <button title="Create top-level folder" onClick={() => setCreateModal('')}
+                className="btn btn-ghost btn-sm" style={{ padding: '2px 6px', fontSize: 16 }}>+</button>
+            )}
           </div>
-          <FolderTree folders={folders} activeFolder={activeFolder} onSelect={handleFolderSelect} />
+          <ul style={{ listStyle: 'none' }}>
+            {folders.map(f => (
+              <FolderNode key={f.id} folder={f} activeFolder={activeFolder}
+                onSelect={handleFolderSelect} onCreateChild={setCreateModal}
+                isAdmin={isAdmin} depth={0} />
+            ))}
+          </ul>
         </div>
 
         {/* Footer */}
-        <div style={{ padding: 12, borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+        <div style={{ padding: '10px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+          <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 6, paddingLeft: 4, letterSpacing: '0.06em' }}>
+            v{VERSION}
+          </div>
           <button className="btn btn-ghost" style={{ width: '100%', justifyContent: 'flex-start', gap: 8, fontSize: 13 }}
             onClick={logout}>
             <Icon d={ICONS.logout} size={14} />
@@ -143,9 +240,8 @@ export default function Layout() {
         </div>
       </aside>
 
-      {/* Main area */}
+      {/* Main */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {/* Topbar */}
         <header style={{
           height: 'var(--topbar-h)', minHeight: 'var(--topbar-h)',
           background: 'var(--bg-1)', borderBottom: '1px solid var(--border)',
@@ -154,16 +250,20 @@ export default function Layout() {
           <button className="btn btn-ghost btn-sm" onClick={() => setSidebarOpen(o => !o)}>
             <Icon d={ICONS.menu} size={16} />
           </button>
-          <span style={{ fontFamily: 'var(--font-display)', fontSize: 13, color: 'var(--text-3)', letterSpacing: '0.05em' }}>
-            v0.0.1
-          </span>
         </header>
-
-        {/* Page content */}
         <main style={{ flex: 1, overflow: 'auto' }}>
           <Outlet />
         </main>
       </div>
+
+      {/* Create folder modal */}
+      {createModal !== null && (
+        <CreateFolderModal
+          parentPath={createModal}
+          onClose={() => setCreateModal(null)}
+          onCreated={loadFolders}
+        />
+      )}
     </div>
   );
 }
