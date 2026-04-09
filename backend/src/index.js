@@ -63,8 +63,8 @@ app.get('/api/health', (req, res) => {
 
 // Serve cover images from the covers volume
 app.use('/covers', express.static(COVERS_PATH, {
-  maxAge: '7d',
-  immutable: true,
+  maxAge: '1d',
+  immutable: false,
   fallthrough: false,
 }));
 

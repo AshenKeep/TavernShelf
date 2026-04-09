@@ -297,7 +297,7 @@ export default function MetadataEditor({ item, onClose, onSave }) {
               {coverFetched && <div style={{ fontSize:11, color:'var(--green-hi)', marginTop:4 }}>✓ Cover applied</div>}
             </div>
             {(coverFetched||item.cover_path) && (
-              <img src={coverFetched||item.cover_path} alt="preview"
+              <img src={coverFetched ? `${coverFetched}?v=${Date.now()}` : `${item.cover_path}?v=${item.updated_at||0}`} alt="preview"
                 style={{ width:36, height:52, objectFit:'cover', borderRadius:2, border:'1px solid var(--border)', flexShrink:0 }}
                 onError={e=>e.target.style.display='none'}/>
             )}

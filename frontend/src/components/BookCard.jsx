@@ -49,7 +49,7 @@ export default function BookCard({ item }) {
       }}>
         {item.cover_path ? (
           <img
-            src={item.cover_path}
+            src={`${item.cover_path}?v=${item.updated_at || 0}`}
             alt={item.title}
             style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
             loading="lazy"

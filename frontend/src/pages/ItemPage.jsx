@@ -59,7 +59,7 @@ export default function ItemPage() {
             boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
           }}>
             {item.cover_path ? (
-              <img src={item.cover_path} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <img src={`${item.cover_path}?v=${item.updated_at || 0}`} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
               <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 48, color: 'var(--text-3)' }}>⚔</div>
             )}
