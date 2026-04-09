@@ -26,11 +26,14 @@ if (TRUST_PROXY) {
   console.log('[Boot] Proxy trust enabled');
 }
 
-// Disable CSP in production — Vite builds use hashed filenames and
-// inline scripts that conflict with strict CSP. Helmet's other protections remain.
+// Minimal Helmet — disable everything that interferes with serving
+// a React SPA behind a reverse proxy (Tailscale, nginx, Cloudflare)
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' },
-  contentSecurityPolicy: false,
+  contentSecurityPolicy:          false,
+  crossOriginEmbedderPolicy:      false,
+  crossOriginOpenerPolicy:        false,
+  crossOriginResourcePolicy:      false,
+  originAgentCluster:             false,
 }));
 
 app.use(cors({ origin: true, credentials: true }));
@@ -38,7 +41,7 @@ app.use(json({ limit: '10mb' }));
 app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 500 }));
 app.use('/api/auth/', rateLimit({ windowMs: 15 * 60 * 1000, max: 20 }));
 
-// ── API routes (before static so /api/* never hits the SPA fallback) ──
+// ── API routes ────────────────────────────────────────────
 app.use('/api/auth',    authRoutes);
 app.use('/api/library', libraryRoutes);
 app.use('/api/uploads', uploadRoutes);
@@ -50,19 +53,13 @@ app.get('/api/health', (req, res) => {
 
 // ── Serve built React frontend ────────────────────────────
 const publicDir = join(__dirname, '..', 'public');
-console.log(`[Boot] Looking for frontend at: ${publicDir}`);
-console.log(`[Boot] Frontend exists: ${existsSync(publicDir)}`);
+console.log(`[Boot] Frontend dir: ${publicDir} (exists: ${existsSync(publicDir)})`);
 
 if (existsSync(publicDir)) {
   app.use(express.static(publicDir, { index: 'index.html' }));
-  // SPA fallback — must come after API routes and after static
-  app.use((req, res) => {
-    res.sendFile(join(publicDir, 'index.html'));
-  });
+  app.use((req, res) => res.sendFile(join(publicDir, 'index.html')));
 } else {
-  app.use((req, res) => {
-    res.json({ message: 'TavernShelf API v0.0.4 — frontend not built' });
-  });
+  app.use((req, res) => res.json({ message: 'TavernShelf API v0.0.4 — frontend not built' }));
 }
 
 // ── Error handler ─────────────────────────────────────────
