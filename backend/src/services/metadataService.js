@@ -135,9 +135,10 @@ export async function fetchMetadataByIsbn(isbn) {
 export async function autoFetchMetadata(itemId, title, filePath) {
   const db = await getDb();
   try {
-    const item = await dbGet(db, 'SELECT metadata_source, cover_path FROM library_items WHERE id = $1', [itemId]);
+    const item = await dbGet(db, 'SELECT metadata_source, cover_path, locked_fields FROM library_items WHERE id = $1', [itemId]);
     // Only auto-fetch if we haven't already fetched from an external source
     if (!item || item.metadata_source !== 'filename') return;
+    const locked = JSON.parse(item.locked_fields || '[]');
 
     logger.info('Metadata', 'Auto-fetching metadata', { title });
 
@@ -173,6 +174,9 @@ export async function autoFetchMetadata(itemId, title, filePath) {
       }
     }
 
+    // Respect locked fields — skip any field the user has locked
+    const skip = (field, val) => locked.includes(field) ? null : val;
+
     await dbRun(db, `
       UPDATE library_items SET
         title           = COALESCE($1, title),
@@ -186,13 +190,13 @@ export async function autoFetchMetadata(itemId, title, filePath) {
         updated_at      = $9
       WHERE id = $10
     `, [
-      best.title || null,
-      best.authors?.length ? JSON.stringify(best.authors) : null,
-      best.description || null,
-      best.publisher || null,
-      best.year || null,
-      best.tags?.length ? JSON.stringify(best.tags) : null,
-      coverPath || null,
+      skip('title',       best.title || null),
+      skip('authors',     best.authors?.length ? JSON.stringify(best.authors) : null),
+      skip('description', best.description || null),
+      skip('publisher',   best.publisher || null),
+      skip('year',        best.year || null),
+      skip('tags',        best.tags?.length ? JSON.stringify(best.tags) : null),
+      skip('cover',       coverPath || null),
       best.source,
       now(),
       itemId,

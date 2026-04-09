@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.0.9] — 2026-04-09
+
+### Added
+- **Read file metadata** — metadata editor shows what's embedded in the actual PDF or CBZ file on disk, colour-coded against the DB values (green = matches, amber = differs, grey = not in file). Fields with differences show amber border highlight
+- **Write metadata to file** (on demand) — "Write DB Metadata to File" button embeds DB metadata back into the source file. PDF via `pdf-lib` (Title, Author, Subject, Keywords, Producer). CBZ via `ComicInfo.xml` inside the zip. Non-destructive — DB save never fails due to a write error
+- **Lock fields** — padlock icon (🔒/🔓) on every field. Locked fields are skipped by auto-fetch, preserving manual edits. Lock state persists in `locked_fields` DB column
+- `GET /api/library/items/:id/metadata/file` — read raw file metadata
+- `POST /api/library/items/:id/metadata/write` — write DB metadata to file
+- `PUT /api/library/items/:id/locked-fields` — update locked fields list
+- New dependency: `pdf-lib` for PDF read/write, `jszip` for CBZ read/write
+
+### Changed
+- `autoFetchMetadata` now respects locked fields — locked fields are never overwritten by background fetches
+- `locked_fields` column added to `library_items` table (auto-migrated on startup for existing installs)
+
+---
+
 ## [0.0.8] — 2026-04-09
 
 ### Fixed

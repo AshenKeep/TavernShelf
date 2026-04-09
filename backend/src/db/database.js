@@ -79,6 +79,7 @@ async function migrate(db) {
       file_size       BIGINT NOT NULL DEFAULT 0,
       page_count      INTEGER,
       metadata_source TEXT DEFAULT 'filename',
+      locked_fields   TEXT DEFAULT '[]',
       created_at      BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
       updated_at      BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
     );
@@ -122,4 +123,20 @@ async function migrate(db) {
     CREATE INDEX IF NOT EXISTS idx_queue_status    ON upload_queue(status);
   `);
   console.log('[DB] Schema ready');
+
+  // Add locked_fields column if it doesn't exist (migration for existing installs)
+  await db.exec(`
+    ALTER TABLE library_items ADD COLUMN IF NOT EXISTS locked_fields TEXT DEFAULT '[]'
+  `);
+
+  // Fix cover_path entries that are missing the /covers/ prefix
+  // (written incorrectly in early versions)
+  await db.exec(`
+    UPDATE library_items
+    SET cover_path = '/covers/' || cover_path
+    WHERE cover_path IS NOT NULL
+      AND cover_path != ''
+      AND cover_path NOT LIKE '/covers/%'
+      AND cover_path NOT LIKE 'http%'
+  `);
 }

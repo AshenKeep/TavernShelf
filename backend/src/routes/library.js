@@ -6,6 +6,7 @@ import { getDb, dbGet, dbRun, dbAll } from '../db/database.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { LIBRARY_PATH } from '../config.js';
 import { fetchMetadataByTitle, fetchMetadataByIsbn, applyMetadata, downloadCover } from '../services/metadataService.js';
+import { readFileMetadata, writeFileMetadata } from '../services/fileMetadataService.js';
 import { scanLibrary } from '../services/libraryScanner.js';
 
 const router = Router();
@@ -154,12 +155,70 @@ router.post('/items/:id/cover/fetch', requireAuth, requireRole('admin'), async (
     const db = await getDb();
     const item = await dbGet(db, 'SELECT id FROM library_items WHERE id = $1', [req.params.id]);
     if (!item) return res.status(404).json({ error: 'Not found' });
-    const coverPath = await downloadCover(url, item.id);
+    const coverPath = await downloadCover(url, item.id, true);
     if (!coverPath) return res.status(422).json({ error: 'Failed to download cover' });
     await dbRun(db, 'UPDATE library_items SET cover_path = $1, updated_at = $2 WHERE id = $3',
       [coverPath, Math.floor(Date.now()/1000), item.id]);
     res.json({ coverPath });
   } catch (e) { console.error('[Library] Cover fetch:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+
+// GET /api/library/items/:id/metadata/file — read raw metadata from the file on disk
+router.get('/items/:id/metadata/file', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const db = await getDb();
+    const item = await dbGet(db, 'SELECT path, file_type FROM library_items WHERE id = $1', [req.params.id]);
+    if (!item) return res.status(404).json({ error: 'Not found' });
+    if (!['pdf','cbz'].includes(item.file_type)) {
+      return res.json({ supported: false, reason: `File type .${item.file_type} does not support metadata reading` });
+    }
+    const fileMeta = await readFileMetadata(item.path);
+    res.json({ supported: true, metadata: fileMeta });
+  } catch (e) { console.error('[Library] File metadata read:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/library/items/:id/metadata/write — write DB metadata back to the file
+router.post('/items/:id/metadata/write', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const db = await getDb();
+    const item = await dbGet(db, 'SELECT * FROM library_items WHERE id = $1', [req.params.id]);
+    if (!item) return res.status(404).json({ error: 'Not found' });
+    if (!['pdf','cbz'].includes(item.file_type)) {
+      return res.status(422).json({ error: `Writing metadata to .${item.file_type} files is not supported` });
+    }
+    const metadata = {
+      title:       item.title,
+      authors:     tryParse(item.authors, []),
+      description: item.description,
+      publisher:   item.publisher,
+      year:        item.year,
+      tags:        tryParse(item.tags, []),
+    };
+    try {
+      await writeFileMetadata(item.path, metadata);
+      res.json({ message: 'Metadata written to file successfully' });
+    } catch (writeErr) {
+      // Write failed but DB is fine — report the error non-destructively
+      res.status(422).json({ error: writeErr.message });
+    }
+  } catch (e) { console.error('[Library] File metadata write:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// PUT /api/library/items/:id/locked-fields — update locked fields list
+router.put('/items/:id/locked-fields', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { lockedFields } = req.body;
+    if (!Array.isArray(lockedFields)) return res.status(400).json({ error: 'lockedFields must be an array' });
+    const db = await getDb();
+    const item = await dbGet(db, 'SELECT id FROM library_items WHERE id = $1', [req.params.id]);
+    if (!item) return res.status(404).json({ error: 'Not found' });
+    await dbRun(db,
+      'UPDATE library_items SET locked_fields = $1, updated_at = $2 WHERE id = $3',
+      [JSON.stringify(lockedFields), Math.floor(Date.now()/1000), item.id]
+    );
+    res.json({ lockedFields });
+  } catch (e) { console.error('[Library] Lock fields:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
 // POST /api/library/scan
@@ -196,9 +255,10 @@ router.get('/stats', requireAuth, async (req, res) => {
 function parseItem(item) {
   return {
     ...item,
-    authors: tryParse(item.authors, []),
-    tags:    tryParse(item.tags, []),
-    file_size: parseInt(item.file_size) || 0,
+    authors:       tryParse(item.authors, []),
+    tags:          tryParse(item.tags, []),
+    locked_fields: tryParse(item.locked_fields, []),
+    file_size:     parseInt(item.file_size) || 0,
   };
 }
 
