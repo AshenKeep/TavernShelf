@@ -149,7 +149,13 @@ router.get('/logs/stream', async (req, res) => {
 });
 
 // ── Logs: download a specific log file ───────────────────
-router.get('/logs/:filename', requireAuth, requireRole('admin'), (req, res) => {
+router.get('/logs/:filename', async (req, res) => {
+  const token = req.query.token || (req.headers.authorization || '').replace('Bearer ', '');
+  if (!token) return res.status(401).end();
+  try {
+    const user = jwt.verify(token, JWT_SECRET);
+    if (user.role !== 'admin') return res.status(403).end();
+  } catch { return res.status(401).end(); }
   const { filename } = req.params;
   if (!filename.match(/^tavernshelf-\d{4}-\d{2}-\d{2}\.log$/)) {
     return res.status(400).json({ error: 'Invalid filename' });

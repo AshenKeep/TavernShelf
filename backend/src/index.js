@@ -58,7 +58,7 @@ app.use('/api/uploads', uploadRoutes);
 app.use('/api/admin',   adminRoutes);
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', version: '0.0.5', uptime: Math.floor(process.uptime()) });
+  res.json({ status: 'ok', version: '0.0.6', uptime: Math.floor(process.uptime()) });
 });
 
 // Serve built React frontend

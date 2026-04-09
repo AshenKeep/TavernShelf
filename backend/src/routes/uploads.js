@@ -2,7 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { v4 as uuid } from 'uuid';
 import { join, extname } from 'path';
-import { renameSync, mkdirSync, existsSync, unlinkSync } from 'fs';
+import { copyFileSync, mkdirSync, existsSync, unlinkSync } from 'fs';
 import { getDb, dbGet, dbRun, dbAll } from '../db/database.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { UPLOADS_PATH, LIBRARY_PATH, SUPPORTED_EXTENSIONS, FILE_TYPE_MAP } from '../config.js';
@@ -88,7 +88,11 @@ router.post('/:id/approve', requireAuth, requireRole('admin'), async (req, res) 
     const destFolder = join(LIBRARY_PATH, item.target_folder);
     mkdirSync(destFolder, { recursive: true });
     const safeFilename = item.original_name.replace(/[^a-zA-Z0-9._\-\s]/g, '_');
-    renameSync(join(UPLOADS_PATH, item.filename), join(destFolder, safeFilename));
+    // Use copy+delete instead of rename — rename fails across Docker volumes (EXDEV)
+    const src = join(UPLOADS_PATH, item.filename);
+    const dest = join(destFolder, safeFilename);
+    copyFileSync(src, dest);
+    unlinkSync(src);
 
     await dbRun(db,
       "UPDATE upload_queue SET status='approved', reviewed_by=$1, reviewed_at=$2 WHERE id=$3",

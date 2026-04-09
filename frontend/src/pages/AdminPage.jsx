@@ -85,7 +85,7 @@ function LogsTab({ token }) {
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
           <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Download:</span>
           {logFiles.map(f => (
-            <a key={f.filename} href={`/api/admin/logs/${f.filename}`}
+            <a key={f.filename} href={`/api/admin/logs/${f.filename}?token=${token}`}
               style={{ fontSize: 11, color: 'var(--amber)', textDecoration: 'underline' }}>
               {f.date}
             </a>
@@ -106,6 +106,76 @@ function LogsTab({ token }) {
           lines.map((line, i) => <LogLine key={i} raw={line} />)
         )}
         <div ref={bottomRef} />
+      </div>
+    </div>
+  );
+}
+
+
+function SettingsTab() {
+  const { post, put } = useApi();
+  const [form, setForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '', newEmail: '' });
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+
+  const f = (k) => (e) => setForm(p => ({ ...p, [k]: e.target.value }));
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setMsg(''); setErr('');
+    if (form.newPassword && form.newPassword !== form.confirmPassword) {
+      return setErr('New passwords do not match');
+    }
+    if (form.newPassword && form.newPassword.length < 8) {
+      return setErr('Password must be at least 8 characters');
+    }
+    if (!form.newPassword && !form.newEmail) {
+      return setErr('Enter a new email or new password');
+    }
+    setSaving(true);
+    try {
+      const body = { currentPassword: form.currentPassword };
+      if (form.newPassword) body.newPassword = form.newPassword;
+      if (form.newEmail)    body.newEmail    = form.newEmail;
+      await put('/auth/credentials', body);
+      setMsg('Credentials updated successfully');
+      setForm({ currentPassword: '', newPassword: '', confirmPassword: '', newEmail: '' });
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: 480 }}>
+      <div className="card" style={{ padding: 24 }}>
+        <h3 style={{ fontFamily: 'var(--font-display)', color: 'var(--text-0)', marginBottom: 6, fontSize: 16 }}>
+          Change Login Credentials
+        </h3>
+        <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 20, lineHeight: 1.6 }}>
+          Update your admin email or password. Current password is required to confirm changes.
+        </p>
+        <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {[
+            { key: 'newEmail',         label: 'New Email (optional)',    type: 'email',    placeholder: 'Leave blank to keep current' },
+            { key: 'currentPassword',  label: 'Current Password',        type: 'password', placeholder: '••••••••', required: true },
+            { key: 'newPassword',      label: 'New Password (optional)', type: 'password', placeholder: 'Min 8 characters' },
+            { key: 'confirmPassword',  label: 'Confirm New Password',    type: 'password', placeholder: 'Repeat new password' },
+          ].map(({ key, label, type, placeholder, required }) => (
+            <div key={key}>
+              <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>{label}</label>
+              <input type={type} placeholder={placeholder} value={form[key]} required={required}
+                onChange={f(key)} autoComplete="off" />
+            </div>
+          ))}
+          {err && <div style={{ fontSize: 13, color: 'var(--red-hi)', padding: '8px 12px', background: 'rgba(138,30,30,0.12)', border: '1px solid rgba(138,30,30,0.25)', borderRadius: 6 }}>{err}</div>}
+          {msg && <div style={{ fontSize: 13, color: 'var(--green-hi)', padding: '8px 12px', background: 'rgba(36,80,42,0.15)', border: '1px solid rgba(36,80,42,0.3)', borderRadius: 6 }}>{msg}</div>}
+          <button type="submit" className="btn btn-primary" style={{ alignSelf: 'flex-start' }} disabled={saving}>
+            {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Save Changes'}
+          </button>
+        </form>
       </div>
     </div>
   );
@@ -191,6 +261,7 @@ export default function AdminPage() {
     ['library', 'Library'],
     ['backup',  'Backup & Restore'],
     ['logs',    'Logs'],
+    ['settings', 'Settings'],
   ];
 
   return (
@@ -330,6 +401,9 @@ export default function AdminPage() {
       )}
 
       {tab === 'logs' && <LogsTab token={token} />}
+
+      {tab === 'settings' && <SettingsTab />}
+
     </div>
   );
 }

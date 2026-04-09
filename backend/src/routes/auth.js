@@ -103,4 +103,38 @@ router.get('/me', requireAuth, async (req, res) => {
   } catch (e) { logger.error('Auth', 'Me error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
 });
 
+
+// PUT /api/auth/credentials — change own email and/or password (admin only for now)
+router.put('/credentials', requireAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword, newEmail } = req.body;
+    if (!currentPassword) return res.status(400).json({ error: 'Current password required' });
+    if (!newPassword && !newEmail) return res.status(400).json({ error: 'Provide a new password or email' });
+
+    const db = await getDb();
+    const user = await dbGet(db, 'SELECT * FROM users WHERE id = $1', [req.user.id]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (!bcrypt.compareSync(currentPassword, user.password)) {
+      logger.warn('Auth', 'Credentials change failed — wrong current password', { email: user.email });
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    if (newEmail && newEmail !== user.email) {
+      const existing = await dbGet(db, 'SELECT id FROM users WHERE email = $1 AND id != $2', [newEmail.toLowerCase().trim(), user.id]);
+      if (existing) return res.status(409).json({ error: 'Email already in use' });
+      await dbRun(db, 'UPDATE users SET email = $1 WHERE id = $2', [newEmail.toLowerCase().trim(), user.id]);
+      logger.event('Auth', 'Email changed', { from: user.email, to: newEmail });
+    }
+
+    if (newPassword) {
+      if (newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+      await dbRun(db, 'UPDATE users SET password = $1 WHERE id = $2', [bcrypt.hashSync(newPassword, 12), user.id]);
+      logger.event('Auth', 'Password changed', { email: user.email });
+    }
+
+    res.json({ message: 'Credentials updated' });
+  } catch (e) { logger.error('Auth', 'Credentials change error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
+});
+
 export default router;

@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.0.6] — 2026-04-09
+
+### Fixed
+- `EXDEV: cross-device link not permitted` on upload approval — replaced `renameSync` with `copyFileSync` + `unlinkSync` so approved files move correctly across Docker volumes (uploads volume → library volume)
+- Log file download returning 401 — browser direct links cannot send auth headers, endpoint now accepts token via query param same as SSE stream
+
+### Added
+- **Change credentials** — Admin → Settings tab allows changing email and/or password. Current password required to confirm. Password minimum 8 characters enforced
+
+### Changed
+- GUI palette shifted to near-black grey (`#0c0b0a`, `#141210`, `#1c1916`) with warm brown-amber undertones on borders and accents only — less brown, more dark tavern stone
+
+---
+
 ## [0.0.5] — 2026-04-09
 
 ### Added
