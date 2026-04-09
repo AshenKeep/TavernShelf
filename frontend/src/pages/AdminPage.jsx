@@ -114,6 +114,102 @@ function LogsTab({ token }) {
 
 
 
+
+function EmailTab() {
+  const { get, post, put } = useApi();
+  const [form, setForm] = useState({ host:'', port:'587', secure:false, user:'', pass:'', from:'', enabled:false });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving]   = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [msg, setMsg]         = useState('');
+  const [err, setErr]         = useState('');
+  const [testMsg, setTestMsg] = useState('');
+  const [testErr, setTestErr] = useState('');
+
+  useEffect(() => {
+    get('/admin/settings/email').then(s => {
+      setForm(f => ({
+        ...f,
+        host:    s.host    || '',
+        port:    s.port    || '587',
+        secure:  s.secure  === 'true',
+        user:    s.user    || '',
+        pass:    s.pass    || '',
+        from:    s.from    || '',
+        enabled: s.enabled === 'true',
+      }));
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  const save = async (e) => {
+    e.preventDefault();
+    setSaving(true); setMsg(''); setErr('');
+    try {
+      await put('/admin/settings/email', { ...form, secure: form.secure, enabled: form.enabled });
+      setMsg('Settings saved');
+    } catch (e) { setErr(e.message); }
+    finally { setSaving(false); }
+  };
+
+  const test = async () => {
+    setTesting(true); setTestMsg(''); setTestErr('');
+    try {
+      const r = await post('/admin/settings/email/test', {});
+      setTestMsg(r.message);
+    } catch (e) { setTestErr(e.message); }
+    finally { setTesting(false); }
+  };
+
+  const f = k => e => setForm(p => ({...p, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value}));
+
+  if (loading) return <div style={{ padding:40, color:'var(--text-3)', textAlign:'center' }}>Loading…</div>;
+
+  return (
+    <div style={{ maxWidth:520 }}>
+      <div className="card" style={{ padding:24 }}>
+        <h3 style={{ fontFamily:'var(--font-display)', color:'var(--text-0)', marginBottom:6, fontSize:16 }}>SMTP Email Settings</h3>
+        <p style={{ fontSize:13, color:'var(--text-2)', marginBottom:20, lineHeight:1.6 }}>
+          Used for sending user invites and campaign email invitations.
+        </p>
+        <form onSubmit={save} style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <label style={{ display:'flex', alignItems:'center', gap:10, fontSize:13, color:'var(--text-1)', cursor:'pointer' }}>
+            <input type="checkbox" checked={form.enabled} onChange={f('enabled')} />
+            Enable email sending
+          </label>
+          {[
+            ['host',   'SMTP Host',     'text',     'smtp.example.com'],
+            ['port',   'SMTP Port',     'number',   '587'],
+            ['user',   'Username',      'email',    'you@example.com'],
+            ['pass',   'Password',      'password', '••••••••'],
+            ['from',   'From Address',  'email',    'tavernshelf@example.com'],
+          ].map(([key, label, type, placeholder]) => (
+            <div key={key}>
+              <label style={{ display:'block', fontSize:12, color:'var(--text-2)', marginBottom:5 }}>{label}</label>
+              <input type={type} value={form[key]} onChange={f(key)} placeholder={placeholder} autoComplete="off" />
+            </div>
+          ))}
+          <label style={{ display:'flex', alignItems:'center', gap:10, fontSize:13, color:'var(--text-1)', cursor:'pointer' }}>
+            <input type="checkbox" checked={form.secure} onChange={f('secure')} />
+            Use TLS/SSL (port 465)
+          </label>
+          {err && <div style={{ fontSize:13, color:'var(--red-hi)', padding:'8px 12px', background:'rgba(138,30,30,0.12)', border:'1px solid rgba(138,30,30,0.3)', borderRadius:6 }}>{err}</div>}
+          {msg && <div style={{ fontSize:13, color:'var(--green-hi)', padding:'8px 12px', background:'rgba(36,80,42,0.15)', border:'1px solid rgba(36,80,42,0.3)', borderRadius:6 }}>{msg}</div>}
+          <div style={{ display:'flex', gap:8 }}>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? <span className="spinner" style={{ width:14, height:14 }}/> : 'Save Settings'}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={test} disabled={testing}>
+              {testing ? <span className="spinner" style={{ width:14, height:14 }}/> : 'Test Connection'}
+            </button>
+          </div>
+          {testMsg && <div style={{ fontSize:13, color:'var(--green-hi)' }}>✓ {testMsg}</div>}
+          {testErr && <div style={{ fontSize:13, color:'var(--red-hi)' }}>✗ {testErr}</div>}
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function UsersTab() {
   const { get, post, put, del } = useApi();
   const { user: currentUser } = useApi();
@@ -311,7 +407,7 @@ function SettingsTab() {
 }
 
 export default function AdminPage() {
-  const { get, post, token } = useApi();
+  const { get, post, put, token } = useApi();
   const [tab, setTab] = useState('queue');
 
   const [queue, setQueue]     = useState([]);
@@ -323,6 +419,8 @@ export default function AdminPage() {
   const [rejectId, setRejectId]         = useState(null);
   const [rejectReason, setRejectReason] = useState('');
   const [scanning, setScanning]         = useState(false);
+  const [editingUpload, setEditingUpload] = useState(null); // id of upload being edited
+  const [uploadEditForm, setUploadEditForm] = useState({});
   const [scanMsg, setScanMsg]           = useState('');
   const [restoring, setRestoring]       = useState(false);
   const [restoreMsg, setRestoreMsg]     = useState('');
@@ -337,6 +435,21 @@ export default function AdminPage() {
   useEffect(() => { if (tab === 'invites') loadInvites(); }, [tab]);
 
   const approve = async (id) => { await post(`/uploads/${id}/approve`, {}); loadQueue(); appEvents.emit('uploadReviewed'); };
+  const saveUploadEdit = async (id) => {
+    const form = uploadEditForm;
+    await put(`/uploads/${id}`, {
+      title:        form.title,
+      authors:      form.authors?.split(',').map(a => a.trim()).filter(Boolean),
+      description:  form.description,
+      system:       form.system,
+      content_type: form.content_type,
+      publisher:    form.publisher,
+      year:         form.year ? parseInt(form.year) : null,
+      tags:         form.tags?.split(',').map(t => t.trim()).filter(Boolean),
+    });
+    loadQueue();
+    setEditingUpload(null);
+  };
   const reject  = async () => {
     await post(`/uploads/${rejectId}/reject`, { reason: rejectReason });
     setRejectId(null); setRejectReason(''); loadQueue(); appEvents.emit('uploadReviewed');
@@ -392,6 +505,7 @@ export default function AdminPage() {
     ['logs',    'Logs'],
     ['users',    'Users'],
     ['settings', 'Settings'],
+    ['email',    'Email'],
   ];
 
   return (
@@ -439,6 +553,10 @@ export default function AdminPage() {
                       <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>By <strong style={{ color: 'var(--text-2)' }}>{item.uploader_name}</strong> · {formatDate(item.created_at)}</div>
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
+                      <button className="btn btn-sm btn-ghost" onClick={() => {
+                        setEditingUpload(editingUpload === item.id ? null : item.id);
+                        setUploadEditForm({ title: item.title, authors: (JSON.parse(item.authors||'[]')).join(', '), description: item.description||'', system: item.system||'', content_type: item.content_type||'', publisher: item.publisher||'', year: item.year||'', tags: (JSON.parse(item.tags||'[]')).join(', ') });
+                      }}>✎ Edit</button>
                       <button className="btn btn-sm btn-primary" onClick={() => approve(item.id)}>✓ Approve</button>
                       <button className="btn btn-sm btn-danger" onClick={() => { setRejectId(item.id); setRejectReason(''); }}>✗ Reject</button>
                     </div>
@@ -448,6 +566,26 @@ export default function AdminPage() {
                       <input placeholder="Reason (optional)" value={rejectReason} onChange={e => setRejectReason(e.target.value)} style={{ flex: 1 }} />
                       <button className="btn btn-sm btn-danger" onClick={reject}>Confirm</button>
                       <button className="btn btn-sm btn-ghost" onClick={() => setRejectId(null)}>Cancel</button>
+                    </div>
+                  )}
+                  {editingUpload === item.id && (
+                    <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                        {[['title','Title'],['authors','Authors (comma-sep)'],['system','System'],['content_type','Content Type'],['publisher','Publisher'],['year','Year'],['tags','Tags (comma-sep)']].map(([k,label]) => (
+                          <div key={k}>
+                            <label style={{ display:'block', fontSize:11, color:'var(--text-3)', marginBottom:3 }}>{label}</label>
+                            <input value={uploadEditForm[k]||''} onChange={e => setUploadEditForm(f=>({...f,[k]:e.target.value}))} style={{ fontSize:12 }} />
+                          </div>
+                        ))}
+                        <div style={{ gridColumn:'1/-1' }}>
+                          <label style={{ display:'block', fontSize:11, color:'var(--text-3)', marginBottom:3 }}>Description</label>
+                          <textarea value={uploadEditForm.description||''} rows={2} style={{ resize:'vertical', fontSize:12 }} onChange={e => setUploadEditForm(f=>({...f,description:e.target.value}))} />
+                        </div>
+                      </div>
+                      <div style={{ display:'flex', gap:8 }}>
+                        <button className="btn btn-primary btn-sm" onClick={() => saveUploadEdit(item.id)}>Save Changes</button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => setEditingUpload(null)}>Cancel</button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -534,6 +672,7 @@ export default function AdminPage() {
       {tab === 'users' && <UsersTab />}
 
       {tab === 'settings' && <SettingsTab />}
+      {tab === 'email' && <EmailTab />}
 
     </div>
   );

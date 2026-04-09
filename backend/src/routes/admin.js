@@ -5,6 +5,7 @@ import { join } from 'path';
 import { getDb, dbAll, dbRun, dbGet } from '../db/database.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { logger, subscribeLogs, readRecentLogs, listLogFiles, getLogDir } from '../services/logger.js';
+import { getEmailSettings, saveEmailSettings, testEmailConnection } from '../services/emailService.js';
 import { LIBRARY_PATH, JWT_SECRET } from '../config.js';
 import { scanLibrary } from '../services/libraryScanner.js';
 import bcrypt from 'bcryptjs';
@@ -240,6 +241,42 @@ router.get('/logs/:filename', async (req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.setHeader('Content-Type', 'text/plain');
   createReadStream(filePath).pipe(res);
+});
+
+
+// ── Email settings ────────────────────────────────────────
+
+router.get('/settings/email', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const settings = await getEmailSettings();
+    // Never return the password
+    const safe = { ...settings };
+    if (safe.pass) safe.pass = '••••••••';
+    res.json(safe);
+  } catch (e) { logger.error('Admin', 'Get email settings error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
+});
+
+router.put('/settings/email', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { host, port, secure, user, pass, from, enabled } = req.body;
+    const toSave = { host: host||'', port: port||'587', secure: secure?'true':'false', user: user||'', from: from||'', enabled: enabled?'true':'false' };
+    // Only update password if a new one was provided (not the masked placeholder)
+    if (pass && pass !== '••••••••') toSave.pass = pass;
+    await saveEmailSettings(toSave);
+    logger.event('Admin', 'Email settings updated', { by: req.user.email });
+    res.json({ message: 'Email settings saved' });
+  } catch (e) { logger.error('Admin', 'Save email settings error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
+});
+
+router.post('/settings/email/test', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    await testEmailConnection();
+    logger.event('Admin', 'Email SMTP connection test passed', { by: req.user.email });
+    res.json({ message: 'SMTP connection successful' });
+  } catch (e) {
+    logger.warn('Admin', 'Email SMTP test failed', { error: e.message });
+    res.status(422).json({ error: `SMTP test failed: ${e.message}` });
+  }
 });
 
 export default router;

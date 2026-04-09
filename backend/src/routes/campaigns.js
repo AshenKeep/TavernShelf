@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import { v4 as uuid } from 'uuid';
+import bcrypt from 'bcryptjs';
 import { getDb, dbAll, dbGet, dbRun } from '../db/database.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { logger } from '../services/logger.js';
+import { sendCampaignInviteEmail } from '../services/emailService.js';
 
 const router = Router();
 const now = () => Math.floor(Date.now() / 1000);
@@ -31,6 +33,28 @@ async function getCampaignAccess(db, campaignId, userId, userRole) {
 
 function parseCampaign(c) {
   return { ...c };
+}
+
+// GET /api/campaigns/item/:itemId — get all campaigns an item belongs to (for the user)
+router.get('/item/:itemId', requireAuth, async (req, res) => {
+  try {
+    const db = await getDb();
+    const memberships = await dbAll(db, `
+      SELECT c.id, c.name, ci.status, ci.notes, ci.id as campaign_item_id,
+             CASE WHEN c.owner_id = $1 THEN 'owner' ELSE cm.role END as my_role
+      FROM campaign_items ci
+      JOIN campaigns c ON ci.campaign_id = c.id
+      LEFT JOIN campaign_members cm ON cm.campaign_id = c.id AND cm.user_id = $1
+      WHERE ci.item_id = $2
+        AND (c.owner_id = $1 OR cm.user_id = $1 OR $3 = 'admin')
+      ORDER BY c.name
+    `, [req.user.id, req.params.itemId, req.user.role]);
+    res.json(memberships);
+  } catch (e) { logger.error('Campaigns', 'Item memberships error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
+});
+
+function tryParse(val, fallback) {
+  try { return JSON.parse(val); } catch { return fallback; }
 }
 
 // ── Campaign CRUD ─────────────────────────────────────────
@@ -163,6 +187,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
 // ── Members ───────────────────────────────────────────────
 
 // POST /api/campaigns/:id/members — invite user by email (owner only)
+// If the user doesn't exist yet, creates an invite token and sends an email
 router.post('/:id/members', requireAuth, async (req, res) => {
   try {
     const { email, role = 'viewer' } = req.body;
@@ -174,8 +199,40 @@ router.post('/:id/members', requireAuth, async (req, res) => {
     if (!access) return res.status(404).json({ error: 'Campaign not found' });
     if (access.myRole !== 'owner') return res.status(403).json({ error: 'Only the owner can invite members' });
 
-    const invitee = await dbGet(db, 'SELECT id, display_name, email FROM users WHERE email = $1', [email.toLowerCase().trim()]);
-    if (!invitee) return res.status(404).json({ error: 'User not found' });
+    const cleanEmail = email.toLowerCase().trim();
+    let invitee = await dbGet(db, 'SELECT id, display_name, email FROM users WHERE email = $1', [cleanEmail]);
+
+    if (!invitee) {
+      // User doesn't exist — create an invite token and send email
+      // Store campaign info in the token so we can add them on registration
+      const token = uuid();
+      const expiresAt = now() + 7 * 86400;
+      await dbRun(db,
+        'INSERT INTO invite_tokens (token, created_by, role, expires_at, created_at) VALUES ($1,$2,$3,$4,$5)',
+        [token, req.user.id, 'member', expiresAt, now()]
+      );
+
+      // Store campaign invite details so registration can complete it
+      await dbRun(db,
+        'INSERT INTO settings (key, value, updated_at) VALUES ($1,$2,$3) ON CONFLICT (key) DO UPDATE SET value=$2, updated_at=$3',
+        [`pending_campaign_invite.${token}`, JSON.stringify({ campaignId: req.params.id, role, email: cleanEmail }), now()]
+      );
+
+      const baseUrl = req.headers.origin || `http://localhost:${process.env.PORT || 3000}`;
+      const inviteUrl = `${baseUrl}/register?invite=${token}`;
+      const sent = await sendCampaignInviteEmail({
+        to: cleanEmail,
+        inviteUrl,
+        invitedBy: req.user.displayName || req.user.email,
+        campaignName: access.campaign.name,
+        role,
+        isNewUser: true,
+      });
+
+      logger.event('Campaigns', 'Campaign invite sent to new user', { campaign: access.campaign.name, email: cleanEmail, role, emailSent: sent });
+      return res.status(201).json({ pending: true, email: cleanEmail, role, emailSent: sent, message: sent ? 'Invite email sent' : 'Invite created (email not configured)' });
+    }
+
     if (invitee.id === req.user.id) return res.status(400).json({ error: 'You are already the owner' });
 
     const existing = await dbGet(db, 'SELECT role FROM campaign_members WHERE campaign_id=$1 AND user_id=$2', [req.params.id, invitee.id]);
@@ -185,8 +242,20 @@ router.post('/:id/members', requireAuth, async (req, res) => {
       'INSERT INTO campaign_members (campaign_id, user_id, role, invited_at) VALUES ($1,$2,$3,$4)',
       [req.params.id, invitee.id, role, now()]
     );
+
+    // Send notification email to existing user
+    const baseUrl = req.headers.origin || `http://localhost:${process.env.PORT || 3000}`;
+    const sent = await sendCampaignInviteEmail({
+      to: cleanEmail,
+      inviteUrl: `${baseUrl}/campaigns/${req.params.id}`,
+      invitedBy: req.user.displayName || req.user.email,
+      campaignName: access.campaign.name,
+      role,
+      isNewUser: false,
+    });
+
     logger.event('Campaigns', 'Member invited', { campaign: access.campaign.name, invitee: email, role });
-    res.status(201).json({ user_id: invitee.id, display_name: invitee.display_name, email: invitee.email, role });
+    res.status(201).json({ user_id: invitee.id, display_name: invitee.display_name, email: invitee.email, role, emailSent: sent });
   } catch (e) { logger.error('Campaigns', 'Invite error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
 });
 
@@ -309,26 +378,5 @@ router.delete('/:id/items/:itemId', requireAuth, async (req, res) => {
   } catch (e) { logger.error('Campaigns', 'Remove item error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
 });
 
-// GET /api/campaigns/item/:itemId — get all campaigns an item belongs to (for the user)
-router.get('/item/:itemId', requireAuth, async (req, res) => {
-  try {
-    const db = await getDb();
-    const memberships = await dbAll(db, `
-      SELECT c.id, c.name, ci.status, ci.notes, ci.id as campaign_item_id,
-             CASE WHEN c.owner_id = $1 THEN 'owner' ELSE cm.role END as my_role
-      FROM campaign_items ci
-      JOIN campaigns c ON ci.campaign_id = c.id
-      LEFT JOIN campaign_members cm ON cm.campaign_id = c.id AND cm.user_id = $1
-      WHERE ci.item_id = $2
-        AND (c.owner_id = $1 OR cm.user_id = $1 OR $3 = 'admin')
-      ORDER BY c.name
-    `, [req.user.id, req.params.itemId, req.user.role]);
-    res.json(memberships);
-  } catch (e) { logger.error('Campaigns', 'Item memberships error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
-});
-
-function tryParse(val, fallback) {
-  try { return JSON.parse(val); } catch { return fallback; }
-}
 
 export default router;

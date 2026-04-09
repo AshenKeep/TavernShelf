@@ -5,6 +5,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.1] — 2026-04-09
+
+### Fixed
+- Campaign member invite `GET /campaigns/item/:itemId` was matched by `GET /campaigns/:id` — moved specific routes before wildcard routes
+
+### Added
+- **Upload metadata editing** — in Admin → Upload Queue, click ✎ Edit to expand an inline form and edit title, authors, system, content type, publisher, year, tags, description before approving
+- **PDF first-page cover extraction** — when scanning a PDF, TavernShelf now tries to extract the largest embedded image from page 1 as the cover before falling back to an external metadata fetch or placeholder
+- **SMTP email** — Admin → Email tab. Configure any SMTP server (host, port, TLS, credentials). Test button verifies connection without sending
+- **Email invites for new users** — when inviting someone to a campaign who doesn't have an account, TavernShelf creates an invite token and sends them a registration email. When they register, they are automatically added to the campaign with the correct role
+- **Email notification for existing users** — existing users get a notification email when added to a campaign
+- `PUT /api/uploads/:id` — update upload queue metadata before approval
+- `GET/PUT /api/admin/settings/email` — read/write SMTP settings
+- `POST /api/admin/settings/email/test` — test SMTP connection
+- `settings` DB table for persistent key-value settings storage
+
+### Changed
+- Campaign invite flow now handles both existing and non-existing users in one endpoint
+
+---
+
 ## [0.1.0] — 2026-04-09
 
 ### Added — Campaigns

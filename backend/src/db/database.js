@@ -150,6 +150,12 @@ async function migrate(db) {
     CREATE INDEX IF NOT EXISTS idx_folders_path        ON folders(path);
     CREATE INDEX IF NOT EXISTS idx_folders_parent      ON folders(parent_id);
     CREATE INDEX IF NOT EXISTS idx_queue_status        ON upload_queue(status);
+    CREATE TABLE IF NOT EXISTS settings (
+      key        TEXT PRIMARY KEY,
+      value      TEXT NOT NULL,
+      updated_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+    );
+
     CREATE INDEX IF NOT EXISTS idx_campaigns_owner     ON campaigns(owner_id);
     CREATE INDEX IF NOT EXISTS idx_camp_members_user   ON campaign_members(user_id);
     CREATE INDEX IF NOT EXISTS idx_camp_items_campaign ON campaign_items(campaign_id);

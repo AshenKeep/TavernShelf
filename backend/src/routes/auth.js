@@ -6,6 +6,7 @@ import { getDb, dbGet, dbRun, dbAll } from '../db/database.js';
 import { JWT_SECRET, JWT_EXPIRY } from '../config.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { logger } from '../services/logger.js';
+import { sendUserInviteEmail } from '../services/emailService.js';
 
 const router = Router();
 const now = () => Math.floor(Date.now() / 1000);
@@ -56,6 +57,24 @@ router.post('/register', async (req, res) => {
     );
     await dbRun(db, 'UPDATE invite_tokens SET used_by=$1, used_at=$2 WHERE token=$3', [id, now(), inviteToken]);
     logger.event('Auth', 'New user registered', { email, role: invite.role });
+
+    // Check for pending campaign invite tied to this token
+    const pendingKey = `pending_campaign_invite.${inviteToken}`;
+    const pendingSetting = await dbGet(db, 'SELECT value FROM settings WHERE key = $1', [pendingKey]);
+    if (pendingSetting) {
+      try {
+        const { campaignId, role: campRole } = JSON.parse(pendingSetting.value);
+        await dbRun(db,
+          'INSERT INTO campaign_members (campaign_id, user_id, role, invited_at) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING',
+          [campaignId, id, campRole, now()]
+        );
+        await dbRun(db, 'DELETE FROM settings WHERE key = $1', [pendingKey]);
+        logger.event('Auth', 'New user auto-added to campaign', { email, campaignId, role: campRole });
+      } catch (e) {
+        logger.warn('Auth', 'Failed to auto-add to campaign', { error: e.message });
+      }
+    }
+
     res.status(201).json({ message: 'Account created. You can now log in.' });
   } catch (e) { logger.error('Auth', 'Register error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
 });

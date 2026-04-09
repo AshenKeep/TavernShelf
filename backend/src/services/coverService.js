@@ -1,3 +1,4 @@
+import { PDFDocument } from 'pdf-lib';
 import { existsSync, mkdirSync } from 'fs';
 import { join, basename } from 'path';
 import sharp from 'sharp';
@@ -32,11 +33,12 @@ export async function generateCover(filePath, itemId, fileType) {
       }
     }
 
-    // For PDFs: don't generate a placeholder here.
-    // Return null so the metadata auto-fetch can download a real cover first.
-    // If metadata fetch also fails, generatePlaceholderCover() is called
-    // explicitly by the scanner after the metadata attempt completes.
+    // For PDFs: try to extract the first page as a cover image
     if (fileType === 'pdf') {
+      const extracted = await extractFirstPageFromPdf(filePath, outFile);
+      if (extracted) return `/covers/${itemId}.webp`;
+      // Return null — let metadata auto-fetch try to download a real cover.
+      // Placeholder is generated after auto-fetch if still nothing.
       return null;
     }
 
@@ -77,6 +79,61 @@ export async function generatePlaceholderCover(itemId, title) {
   } catch (e) {
     console.warn(`[Cover] Placeholder generation failed:`, e.message);
     return null;
+  }
+}
+
+
+async function extractFirstPageFromPdf(filePath, outFile) {
+  try {
+    const { readFileSync } = await import('fs');
+    const bytes = readFileSync(filePath);
+    const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true }).catch(() => null);
+    if (!pdf || pdf.getPageCount() === 0) return false;
+
+    // Extract embedded images from page 1 — look for the largest image
+    const page = pdf.getPage(0);
+    const { width, height } = page.getSize();
+
+    // Try to find embedded images via XObject resources
+    const node = page.node;
+    const resources = node.Resources();
+    if (!resources) return false;
+
+    const xObjects = resources.XObject();
+    if (!xObjects) return false;
+
+    const keys = xObjects.keys();
+    let bestBuf = null;
+    let bestSize = 0;
+
+    for (const key of keys) {
+      try {
+        const xobj = xObjects.lookup(key);
+        if (!xobj) continue;
+        const subtypeVal = xobj.get(xobj.context.obj('Subtype'));
+        if (!subtypeVal || subtypeVal.toString() !== '/Image') continue;
+
+        const rawBytes = xobj.getContents ? xobj.getContents() : null;
+        if (!rawBytes) continue;
+
+        if (rawBytes.length > bestSize) {
+          bestSize = rawBytes.length;
+          bestBuf = Buffer.from(rawBytes);
+        }
+      } catch { continue; }
+    }
+
+    if (bestBuf && bestBuf.length > 5000) {
+      await sharp(bestBuf)
+        .resize(280, 400, { fit: 'cover' })
+        .webp({ quality: 80 })
+        .toFile(outFile);
+      return true;
+    }
+    return false;
+  } catch (e) {
+    // pdf-lib page image extraction is best-effort — silently fail
+    return false;
   }
 }
 
