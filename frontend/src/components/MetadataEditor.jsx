@@ -190,6 +190,7 @@ export default function MetadataEditor({ item, onClose, onSave }) {
   const f = (k) => (e) => setForm(p => ({...p, [k]: e.target.value}));
 
   return (
+    <>
     <div style={{
       position:'fixed', inset:0, zIndex:100,
       background:'rgba(0,0,0,0.82)', backdropFilter:'blur(4px)',
@@ -432,5 +433,6 @@ export default function MetadataEditor({ item, onClose, onSave }) {
         onMoved={(updated) => { setModuleModal(null); onSave(updated); }}
       />
     )}
+    </>
   );
 }
