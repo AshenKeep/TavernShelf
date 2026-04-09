@@ -24,20 +24,19 @@ jobs:
 
             ### Quick Start
 
-            1. Copy `docker-compose.yml` from this repo
-            2. Create a `.env` file next to it (see `.env.example`)
+            1. Copy `docker-compose.yml` and create a `.env` file next to it
+            2. Set your `LIBRARY_PATH`, `JWT_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`
             3. Run:
 
             ```bash
             docker compose up -d
             ```
 
-            Open **http://localhost:7624** — sign in with your admin credentials.
+            Open **http://localhost:7624**
 
-            The image is pulled automatically from GHCR. No build step required.
+            The image is pulled automatically from GHCR — no build step required.
 
             ---
-
-            See [README.md](./README.md) for full setup instructions, reverse proxy guides, and troubleshooting.
+            See [README.md](./README.md) for full setup, reverse proxy guides, and troubleshooting.
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
