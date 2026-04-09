@@ -3,7 +3,7 @@ import { join, extname, basename, relative, dirname } from 'path';
 import { v4 as uuid } from 'uuid';
 import { getDb, dbGet, dbRun, dbAll } from '../db/database.js';
 import { LIBRARY_PATH, SUPPORTED_EXTENSIONS, FILE_TYPE_MAP } from '../config.js';
-import { generateCover } from './coverService.js';
+import { generateCover, generatePlaceholderCover } from './coverService.js';
 import { autoFetchMetadata } from './metadataService.js';
 import { logger } from './logger.js';
 
@@ -87,7 +87,20 @@ async function addItem(db, fullPath, relPath, stat, ext) {
 
   // Auto-fetch metadata in background — non-blocking, only for PDFs and CBZs
   if (fileType === 'pdf' || fileType === 'cbz') {
-    setImmediate(() => autoFetchMetadata(id, title, fullPath).catch(() => {}));
+    setImmediate(async () => {
+      await autoFetchMetadata(id, title, fullPath).catch(() => {});
+      // After metadata fetch, generate placeholder if we still have no cover
+      if (fileType === 'pdf') {
+        const db = await getDb();
+        const item = await dbGet(db, 'SELECT cover_path FROM library_items WHERE id = $1', [id]).catch(() => null);
+        if (item && !item.cover_path) {
+          const placeholder = await generatePlaceholderCover(id, title).catch(() => null);
+          if (placeholder) {
+            await dbRun(db, 'UPDATE library_items SET cover_path = $1 WHERE id = $2', [placeholder, id]).catch(() => {});
+          }
+        }
+      }
+    });
   }
 }
 

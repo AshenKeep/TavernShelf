@@ -1,5 +1,5 @@
+import { existsSync } from 'fs';
 import fetch from 'node-fetch';
-import { createWriteStream, existsSync } from 'fs';
 import { join } from 'path';
 import { getDb, dbGet, dbRun } from '../db/database.js';
 import { COVERS_PATH } from '../config.js';
@@ -18,8 +18,10 @@ export function extractIsbnFromText(text) {
 }
 
 // ── Cover image download ───────────────────────────────────
-export async function downloadCover(url, itemId) {
+export async function downloadCover(url, itemId, force = false) {
   const outFile = join(COVERS_PATH, `${itemId}.webp`);
+  // Skip if real cover already exists (not a placeholder) and not forced
+  if (!force && existsSync(outFile)) return `/covers/${itemId}.webp`;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
     if (!res.ok) return null;

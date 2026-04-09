@@ -5,6 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.0.8] — 2026-04-09
+
+### Fixed
+- **Covers not showing in GUI** — `/covers` directory was never mounted as a static route after nginx was removed in v0.0.2. Added `express.static` for `/covers` in `index.js`
+- **Purple placeholder replacing real covers** — PDF cover placeholder was written to disk before the metadata auto-fetch had a chance to download a real cover. PDFs now return `null` from `generateCover`, metadata fetch downloads the real cover, and placeholder is only generated if metadata fetch also finds nothing
+- Duplicate `existsSync` import in metadataService
+
+### Changed
+- Placeholder covers now use the tavern colour scheme (dark stone, amber accents) instead of the old purple gradient
+- `downloadCover` now overwrites existing placeholder files when a real cover is found
+
+---
+
 ## [0.0.7] — 2026-04-09
 
 ### Fixed

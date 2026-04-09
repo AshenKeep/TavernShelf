@@ -1,4 +1,4 @@
-import { createWriteStream, existsSync, mkdirSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync } from 'fs';
 import { join, basename } from 'path';
 import sharp from 'sharp';
 import yauzl from 'yauzl';
@@ -32,11 +32,14 @@ export async function generateCover(filePath, itemId, fileType) {
       }
     }
 
-    // PDF: generate placeholder cover with title text
+    // For PDFs: don't generate a placeholder here.
+    // Return null so the metadata auto-fetch can download a real cover first.
+    // If metadata fetch also fails, generatePlaceholderCover() is called
+    // explicitly by the scanner after the metadata attempt completes.
     if (fileType === 'pdf') {
-      await generatePlaceholderCover(outFile, basename(filePath));
-      return `/covers/${itemId}.webp`;
+      return null;
     }
+
   } catch (e) {
     console.warn(`[Cover] Failed for ${filePath}:`, e.message);
   }
@@ -44,13 +47,44 @@ export async function generateCover(filePath, itemId, fileType) {
   return null;
 }
 
+// Called explicitly after metadata fetch fails to get a real cover
+export async function generatePlaceholderCover(itemId, title) {
+  const outFile = join(COVERS_PATH, `${itemId}.webp`);
+  if (existsSync(outFile)) return `/covers/${itemId}.webp`;
+
+  const cleanTitle = title.replace(/\.pdf$/i, '').replace(/[-_]/g, ' ').slice(0, 50);
+
+  // Tavern-themed placeholder — dark stone with amber accent
+  const svg = `<svg width="280" height="400" xmlns="http://www.w3.org/2000/svg">
+    <rect width="280" height="400" fill="#1c1916" rx="4"/>
+    <rect x="14" y="14" width="252" height="372" fill="none" stroke="#c8882a" stroke-width="1" stroke-opacity="0.3" rx="3"/>
+    <rect x="20" y="20" width="240" height="360" fill="none" stroke="#c8882a" stroke-width="0.5" stroke-opacity="0.15" rx="2"/>
+    <text x="140" y="170" text-anchor="middle" font-family="Georgia,serif" font-size="72" fill="#c8882a" opacity="0.2">⚔</text>
+    <line x1="40" y1="200" x2="240" y2="200" stroke="#c8882a" stroke-width="0.5" stroke-opacity="0.3"/>
+    <text x="140" y="240" text-anchor="middle" font-family="Georgia,serif" font-size="13" fill="#b8a888" opacity="0.9"
+      textLength="${Math.min(cleanTitle.length * 7, 220)}" lengthAdjust="spacing">
+      ${cleanTitle.slice(0, 28)}
+    </text>
+    ${cleanTitle.length > 28 ? `<text x="140" y="260" text-anchor="middle" font-family="Georgia,serif" font-size="13" fill="#b8a888" opacity="0.9">${cleanTitle.slice(28, 54)}</text>` : ''}
+    <line x1="40" y1="280" x2="240" y2="280" stroke="#c8882a" stroke-width="0.5" stroke-opacity="0.3"/>
+  </svg>`;
+
+  try {
+    await sharp(Buffer.from(svg))
+      .webp({ quality: 80 })
+      .toFile(outFile);
+    return `/covers/${itemId}.webp`;
+  } catch (e) {
+    console.warn(`[Cover] Placeholder generation failed:`, e.message);
+    return null;
+  }
+}
+
 function extractFirstImageFromCbz(filePath) {
   return new Promise((resolve, reject) => {
     yauzl.open(filePath, { lazyEntries: true }, (err, zipfile) => {
       if (err) return reject(err);
-
       const imageEntries = [];
-
       zipfile.readEntry();
       zipfile.on('entry', (entry) => {
         const name = entry.fileName.toLowerCase();
@@ -59,14 +93,10 @@ function extractFirstImageFromCbz(filePath) {
         }
         zipfile.readEntry();
       });
-
       zipfile.on('end', () => {
         if (!imageEntries.length) return resolve(null);
-
-        // Sort to get the first image (cover)
         imageEntries.sort((a, b) => a.fileName.localeCompare(b.fileName));
         const first = imageEntries[0];
-
         zipfile.openReadStream(first, (err, stream) => {
           if (err) return resolve(null);
           const chunks = [];
@@ -75,49 +105,7 @@ function extractFirstImageFromCbz(filePath) {
           stream.on('error', () => resolve(null));
         });
       });
-
       zipfile.on('error', () => resolve(null));
     });
   });
-}
-
-async function generatePlaceholderCover(outFile, title) {
-  // Create a simple gradient placeholder with text
-  const cleanTitle = title.replace(/\.pdf$/i, '').replace(/[-_]/g, ' ').slice(0, 40);
-
-  const svg = `
-    <svg width="280" height="400" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#1a1625"/>
-          <stop offset="100%" stop-color="#2d1f3d"/>
-        </linearGradient>
-      </defs>
-      <rect width="280" height="400" fill="url(#bg)" rx="4"/>
-      <rect x="20" y="20" width="240" height="360" fill="none" stroke="#6b4fa0" stroke-width="1" stroke-opacity="0.4" rx="2"/>
-      <rect x="28" y="28" width="224" height="344" fill="none" stroke="#6b4fa0" stroke-width="0.5" stroke-opacity="0.2" rx="2"/>
-      <text
-        x="140" y="180"
-        text-anchor="middle"
-        font-family="serif"
-        font-size="64"
-        fill="#6b4fa0"
-        opacity="0.3"
-      >⚔</text>
-      <foreignObject x="24" y="220" width="232" height="140">
-        <div xmlns="http://www.w3.org/1999/xhtml" style="
-          color: #e8dff5;
-          font-family: Georgia, serif;
-          font-size: 15px;
-          line-height: 1.4;
-          text-align: center;
-          word-wrap: break-word;
-          padding: 8px;
-        ">${cleanTitle}</div>
-      </foreignObject>
-    </svg>`;
-
-  await sharp(Buffer.from(svg))
-    .webp({ quality: 80 })
-    .toFile(outFile);
 }
