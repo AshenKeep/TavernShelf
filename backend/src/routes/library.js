@@ -5,7 +5,7 @@ import mime from 'mime-types';
 import { getDb, dbGet, dbRun, dbAll } from '../db/database.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { LIBRARY_PATH } from '../config.js';
-import { fetchMetadataByTitle, applyMetadata } from '../services/metadataService.js';
+import { fetchMetadataByTitle, fetchMetadataByIsbn, applyMetadata, downloadCover } from '../services/metadataService.js';
 import { scanLibrary } from '../services/libraryScanner.js';
 
 const router = Router();
@@ -133,6 +133,33 @@ router.put('/items/:id/metadata', requireAuth, requireRole('admin'), async (req,
     if (!updated) return res.status(404).json({ error: 'Not found' });
     res.json(parseItem(updated));
   } catch (e) { console.error('[Library] Metadata update:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+
+// POST /api/library/items/:id/metadata/search-isbn
+router.post('/items/:id/metadata/search-isbn', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { isbn } = req.body;
+    if (!isbn) return res.status(400).json({ error: 'isbn required' });
+    const results = await fetchMetadataByIsbn(isbn.replace(/[-\s]/g, ''));
+    res.json(results);
+  } catch (e) { console.error('[Library] ISBN search:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/library/items/:id/cover/fetch — fetch cover from a URL
+router.post('/items/:id/cover/fetch', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ error: 'url required' });
+    const db = await getDb();
+    const item = await dbGet(db, 'SELECT id FROM library_items WHERE id = $1', [req.params.id]);
+    if (!item) return res.status(404).json({ error: 'Not found' });
+    const coverPath = await downloadCover(url, item.id);
+    if (!coverPath) return res.status(422).json({ error: 'Failed to download cover' });
+    await dbRun(db, 'UPDATE library_items SET cover_path = $1, updated_at = $2 WHERE id = $3',
+      [coverPath, Math.floor(Date.now()/1000), item.id]);
+    res.json({ coverPath });
+  } catch (e) { console.error('[Library] Cover fetch:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
 // POST /api/library/scan

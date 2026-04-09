@@ -7,6 +7,8 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 import { logger, subscribeLogs, readRecentLogs, listLogFiles, getLogDir } from '../services/logger.js';
 import { LIBRARY_PATH, JWT_SECRET } from '../config.js';
 import { scanLibrary } from '../services/libraryScanner.js';
+import bcrypt from 'bcryptjs';
+import { v4 as uuid } from 'uuid';
 import jwt from 'jsonwebtoken';
 
 const router = Router();
@@ -91,6 +93,79 @@ router.post('/restore', requireAuth, requireRole('admin'), upload.single('backup
     logger.event('Admin', 'Restore complete', { by: req.user.email, ...counts });
     res.json({ message: 'Restore complete', counts });
   } catch (e) { logger.error('Admin', 'Restore error', { error: e.message }); res.status(500).json({ error: `Restore failed: ${e.message}` }); }
+});
+
+
+// ── User management ───────────────────────────────────────
+
+// GET /api/admin/users
+router.get('/users', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const db = await getDb();
+    const users = await dbAll(db,
+      'SELECT id, email, display_name, role, created_at, last_login FROM users ORDER BY created_at DESC'
+    );
+    res.json(users);
+  } catch (e) { logger.error('Admin', 'List users error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/admin/users — create user directly
+router.post('/users', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { email, password, displayName, role = 'member' } = req.body;
+    if (!email || !password || !displayName) return res.status(400).json({ error: 'email, password and displayName required' });
+    if (!['member','uploader','admin'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+    if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+    const db = await getDb();
+    const existing = await dbGet(db, 'SELECT id FROM users WHERE email = $1', [email.toLowerCase().trim()]);
+    if (existing) return res.status(409).json({ error: 'Email already registered' });
+
+    const id = uuid();
+    await dbRun(db,
+      'INSERT INTO users (id, email, password, display_name, role, created_at) VALUES ($1,$2,$3,$4,$5,$6)',
+      [id, email.toLowerCase().trim(), bcrypt.hashSync(password, 12), displayName, role, Math.floor(Date.now()/1000)]
+    );
+    logger.event('Admin', 'User created', { email, role, by: req.user.email });
+    res.status(201).json({ id, email, displayName, role });
+  } catch (e) { logger.error('Admin', 'Create user error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
+});
+
+// PUT /api/admin/users/:id — update role or reset password
+router.put('/users/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { role, password } = req.body;
+    const db = await getDb();
+    const user = await dbGet(db, 'SELECT * FROM users WHERE id = $1', [req.params.id]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (role) {
+      if (!['member','uploader','admin'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+      await dbRun(db, 'UPDATE users SET role = $1 WHERE id = $2', [role, user.id]);
+      logger.event('Admin', 'User role changed', { email: user.email, from: user.role, to: role, by: req.user.email });
+    }
+    if (password) {
+      if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+      await dbRun(db, 'UPDATE users SET password = $1 WHERE id = $2', [bcrypt.hashSync(password, 12), user.id]);
+      logger.event('Admin', 'User password reset', { email: user.email, by: req.user.email });
+    }
+
+    const updated = await dbGet(db, 'SELECT id, email, display_name, role, created_at, last_login FROM users WHERE id = $1', [user.id]);
+    res.json(updated);
+  } catch (e) { logger.error('Admin', 'Update user error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
+});
+
+// DELETE /api/admin/users/:id
+router.delete('/users/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    if (req.params.id === req.user.id) return res.status(400).json({ error: 'Cannot delete your own account' });
+    const db = await getDb();
+    const user = await dbGet(db, 'SELECT email FROM users WHERE id = $1', [req.params.id]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    await dbRun(db, 'DELETE FROM users WHERE id = $1', [req.params.id]);
+    logger.event('Admin', 'User deleted', { email: user.email, by: req.user.email });
+    res.json({ message: 'User deleted' });
+  } catch (e) { logger.error('Admin', 'Delete user error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
 });
 
 // ── Folder creation ───────────────────────────────────────

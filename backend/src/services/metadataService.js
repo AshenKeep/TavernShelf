@@ -1,15 +1,71 @@
 import fetch from 'node-fetch';
+import { createWriteStream, existsSync } from 'fs';
+import { join } from 'path';
 import { getDb, dbGet, dbRun } from '../db/database.js';
+import { COVERS_PATH } from '../config.js';
+import { logger } from './logger.js';
+import sharp from 'sharp';
 
 const now = () => Math.floor(Date.now() / 1000);
 
-export async function fetchMetadataByTitle(title) {
-  const results = [];
-  try { results.push(...await searchOpenLibrary(title)); } catch (e) { console.warn('[Metadata] OpenLibrary:', e.message); }
-  try { results.push(...await searchGoogleBooks(title)); } catch (e) { console.warn('[Metadata] Google Books:', e.message); }
-  return results;
+// ── ISBN extraction from PDF metadata ─────────────────────
+export function extractIsbnFromText(text) {
+  if (!text) return null;
+  // Match ISBN-13 (978/979 prefix) or ISBN-10
+  const match = text.match(/(?:ISBN[:\s-]*)?(97[89][-\s]?\d{1,5}[-\s]?\d{1,7}[-\s]?\d{1,7}[-\s]?\d|(?:\d[-\s]?){9}[\dXx])/i);
+  if (!match) return null;
+  return match[0].replace(/[-\s]/g, '').toUpperCase();
 }
 
+// ── Cover image download ───────────────────────────────────
+export async function downloadCover(url, itemId) {
+  const outFile = join(COVERS_PATH, `${itemId}.webp`);
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return null;
+    const buffer = Buffer.from(await res.arrayBuffer());
+    await sharp(buffer)
+      .resize(280, 400, { fit: 'cover' })
+      .webp({ quality: 85 })
+      .toFile(outFile);
+    return `/covers/${itemId}.webp`;
+  } catch (e) {
+    logger.warn('Metadata', 'Cover download failed', { url, error: e.message });
+    return null;
+  }
+}
+
+// ── Search by ISBN ─────────────────────────────────────────
+async function searchByIsbn(isbn) {
+  try {
+    const res = await fetch(
+      `https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`,
+      { signal: AbortSignal.timeout(8000) }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const book = data[`ISBN:${isbn}`];
+    if (!book) return null;
+
+    const coverId = book.cover?.large || book.cover?.medium || book.cover?.small;
+    return {
+      source:    'openlibrary-isbn',
+      title:     book.title || '',
+      authors:   (book.authors || []).map(a => a.name),
+      year:      book.publish_date ? parseInt(book.publish_date) : null,
+      publisher: (book.publishers || [])[0]?.name || '',
+      tags:      (book.subjects || []).slice(0, 10).map(s => s.name || s),
+      coverUrl:  coverId || null,
+      description: book.excerpts?.[0]?.text || '',
+      isbn,
+    };
+  } catch (e) {
+    logger.warn('Metadata', 'ISBN lookup failed', { isbn, error: e.message });
+    return null;
+  }
+}
+
+// ── Search OpenLibrary by title ────────────────────────────
 async function searchOpenLibrary(title) {
   const res = await fetch(
     `https://openlibrary.org/search.json?title=${encodeURIComponent(title)}&limit=5&fields=key,title,author_name,first_publish_year,publisher,subject,cover_i`,
@@ -18,20 +74,22 @@ async function searchOpenLibrary(title) {
   if (!res.ok) return [];
   const data = await res.json();
   return (data.docs || []).map(doc => ({
-    source: 'openlibrary',
-    title: doc.title || '',
-    authors: doc.author_name || [],
-    year: doc.first_publish_year || null,
+    source:    'openlibrary',
+    title:     doc.title || '',
+    authors:   doc.author_name || [],
+    year:      doc.first_publish_year || null,
     publisher: (doc.publisher || [])[0] || '',
-    tags: (doc.subject || []).slice(0, 10),
-    coverUrl: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg` : null,
+    tags:      (doc.subject || []).slice(0, 10),
+    coverUrl:  doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg` : null,
     description: '',
   }));
 }
 
-async function searchGoogleBooks(title) {
+// ── Search Google Books by title or ISBN ───────────────────
+async function searchGoogleBooks(query, isIsbn = false) {
+  const q = isIsbn ? `isbn:${query}` : encodeURIComponent(query);
   const res = await fetch(
-    `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(title)}&maxResults=5&printType=books`,
+    `https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=5&printType=books`,
     { signal: AbortSignal.timeout(8000) }
   );
   if (!res.ok) return [];
@@ -39,20 +97,119 @@ async function searchGoogleBooks(title) {
   return (data.items || []).map(item => {
     const info = item.volumeInfo || {};
     return {
-      source: 'googlebooks',
-      title: info.title || '',
-      authors: info.authors || [],
-      year: info.publishedDate ? parseInt(info.publishedDate) : null,
+      source:    isIsbn ? 'googlebooks-isbn' : 'googlebooks',
+      title:     info.title || '',
+      authors:   info.authors || [],
+      year:      info.publishedDate ? parseInt(info.publishedDate) : null,
       publisher: info.publisher || '',
-      tags: info.categories || [],
-      coverUrl: info.imageLinks?.thumbnail?.replace('http:', 'https:') || null,
+      tags:      info.categories || [],
+      coverUrl:  info.imageLinks?.thumbnail?.replace('http:', 'https:') || null,
       description: info.description || '',
+      isbn:      (info.industryIdentifiers || []).find(i => i.type === 'ISBN_13')?.identifier || null,
     };
   });
 }
 
+// ── Public search (used by manual metadata editor) ─────────
+export async function fetchMetadataByTitle(title) {
+  const results = [];
+  try { results.push(...await searchOpenLibrary(title)); } catch (e) { logger.warn('Metadata', 'OpenLibrary search failed', { error: e.message }); }
+  try { results.push(...await searchGoogleBooks(title)); } catch (e) { logger.warn('Metadata', 'Google Books search failed', { error: e.message }); }
+  return results;
+}
+
+export async function fetchMetadataByIsbn(isbn) {
+  const results = [];
+  try {
+    const olResult = await searchByIsbn(isbn);
+    if (olResult) results.push(olResult);
+  } catch (e) { logger.warn('Metadata', 'ISBN search failed', { error: e.message }); }
+  try { results.push(...await searchGoogleBooks(isbn, true)); } catch (e) {}
+  return results;
+}
+
+// ── Auto-fetch metadata for a newly scanned item ──────────
+// Runs in background after scan — non-blocking
+export async function autoFetchMetadata(itemId, title, filePath) {
+  const db = await getDb();
+  try {
+    const item = await dbGet(db, 'SELECT metadata_source, cover_path FROM library_items WHERE id = $1', [itemId]);
+    // Only auto-fetch if we haven't already fetched from an external source
+    if (!item || item.metadata_source !== 'filename') return;
+
+    logger.info('Metadata', 'Auto-fetching metadata', { title });
+
+    let results = [];
+
+    // Try to extract ISBN from filename first
+    const isbnFromFilename = extractIsbnFromText(title);
+    if (isbnFromFilename) {
+      logger.info('Metadata', 'Found ISBN in filename', { isbn: isbnFromFilename });
+      results = await fetchMetadataByIsbn(isbnFromFilename);
+    }
+
+    // Fall back to title search if ISBN didn't work
+    if (!results.length) {
+      results = await fetchMetadataByTitle(title);
+    }
+
+    if (!results.length) {
+      logger.info('Metadata', 'No metadata found', { title });
+      return;
+    }
+
+    const best = results[0];
+    logger.info('Metadata', 'Auto-applying metadata', { title, source: best.source, found: best.title });
+
+    // Download cover if available and we don't have one yet
+    let coverPath = item.cover_path;
+    if (best.coverUrl && (!coverPath || coverPath.includes('placeholder'))) {
+      const downloaded = await downloadCover(best.coverUrl, itemId);
+      if (downloaded) {
+        coverPath = downloaded;
+        logger.info('Metadata', 'Cover downloaded', { itemId, url: best.coverUrl });
+      }
+    }
+
+    await dbRun(db, `
+      UPDATE library_items SET
+        title           = COALESCE($1, title),
+        authors         = COALESCE($2, authors),
+        description     = COALESCE($3, description),
+        publisher       = COALESCE($4, publisher),
+        year            = COALESCE($5, year),
+        tags            = COALESCE($6, tags),
+        cover_path      = COALESCE($7, cover_path),
+        metadata_source = $8,
+        updated_at      = $9
+      WHERE id = $10
+    `, [
+      best.title || null,
+      best.authors?.length ? JSON.stringify(best.authors) : null,
+      best.description || null,
+      best.publisher || null,
+      best.year || null,
+      best.tags?.length ? JSON.stringify(best.tags) : null,
+      coverPath || null,
+      best.source,
+      now(),
+      itemId,
+    ]);
+  } catch (e) {
+    logger.error('Metadata', 'Auto-fetch failed', { itemId, error: e.message });
+  }
+}
+
+// ── Apply metadata manually (from editor) ─────────────────
 export async function applyMetadata(itemId, metadata) {
   const db = await getDb();
+
+  // If a coverUrl is provided, download it
+  let coverPath = null;
+  if (metadata.coverUrl) {
+    coverPath = await downloadCover(metadata.coverUrl, itemId);
+  }
+
   await dbRun(db, `
     UPDATE library_items SET
       title           = COALESCE($1, title),
@@ -63,9 +220,10 @@ export async function applyMetadata(itemId, metadata) {
       tags            = COALESCE($6, tags),
       system          = COALESCE($7, system),
       content_type    = COALESCE($8, content_type),
-      metadata_source = $9,
-      updated_at      = $10
-    WHERE id = $11
+      cover_path      = COALESCE($9, cover_path),
+      metadata_source = $10,
+      updated_at      = $11
+    WHERE id = $12
   `, [
     metadata.title || null,
     metadata.authors ? JSON.stringify(metadata.authors) : null,
@@ -75,9 +233,11 @@ export async function applyMetadata(itemId, metadata) {
     metadata.tags ? JSON.stringify(metadata.tags) : null,
     metadata.system || null,
     metadata.contentType || null,
+    coverPath || null,
     metadata.source || 'manual',
     now(),
     itemId,
   ]);
+
   return dbGet(db, 'SELECT * FROM library_items WHERE id = $1', [itemId]);
 }

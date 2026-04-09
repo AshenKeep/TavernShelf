@@ -1,9 +1,9 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext.jsx';
+import { useAuth, appEvents } from '../context/AuthContext.jsx';
 import { useApi } from '../hooks/useApi.js';
 
-const VERSION = '0.0.6';
+const VERSION = '0.0.7';
 
 const Icon = ({ d, size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -143,10 +143,14 @@ export default function Layout() {
   const [createModal, setCreateModal] = useState(null); // null | parentPath string
 
   const loadFolders = () => get('/library/folders').then(setFolders).catch(() => {});
+  const loadPending = () => { if (isAdmin) get('/uploads?status=pending').then(q => setPendingCount(q.length)).catch(() => {}); };
 
   useEffect(() => {
     loadFolders();
-    if (isAdmin) get('/uploads?status=pending').then(q => setPendingCount(q.length)).catch(() => {});
+    loadPending();
+    // Refresh pending count whenever an upload is reviewed
+    const unsub = appEvents.on('uploadReviewed', loadPending);
+    return unsub;
   }, [isAdmin]);
 
   const handleFolderSelect = (path) => {

@@ -5,6 +5,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.0.7] — 2026-04-09
+
+### Fixed
+- Version string in Docker logs was showing v0.0.5 — all version references in `index.js` now updated correctly
+- Upload queue counter in sidebar not clearing after approve/reject — now uses an event bus to notify Layout to refresh
+
+### Added
+- **Auto metadata fetch** — when a new file is scanned, TavernShelf automatically searches OpenLibrary and Google Books in the background. Downloads cover art and applies title, authors, publisher, year, description if found. Non-blocking — scan completes immediately
+- **ISBN search** — metadata editor now has a By ISBN tab. Searches OpenLibrary's ISBN API directly for accurate results
+- **Cover URL fetch** — paste any image URL in the metadata editor to download and apply it as the cover
+- **User management tab** in Admin — create users directly (no invite link needed), list all users, change roles, reset passwords, delete accounts
+- User management endpoints: `GET/POST /api/admin/users`, `PUT/DELETE /api/admin/users/:id`
+
+### Changed
+- Metadata editor shows cover thumbnails in search results
+- Search results from ISBN lookup prioritised over title search
+
+---
+
 ## [0.0.6] — 2026-04-09
 
 ### Fixed

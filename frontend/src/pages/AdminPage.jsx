@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useApi } from '../hooks/useApi.js';
+import { appEvents } from '../context/AuthContext.jsx';
 
 function formatSize(b) {
   if (!b) return '—';
@@ -112,6 +113,134 @@ function LogsTab({ token }) {
 }
 
 
+
+function UsersTab() {
+  const { get, post, put, del } = useApi();
+  const { user: currentUser } = useApi();
+  const [users, setUsers] = useState([]);
+  const [showCreate, setShowCreate] = useState(false);
+  const [form, setForm] = useState({ email: '', password: '', displayName: '', role: 'member' });
+  const [editId, setEditId] = useState(null);
+  const [editRole, setEditRole] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [msg, setMsg] = useState('');
+
+  const { token } = useApi();
+  const loadUsers = () => get('/admin/users').then(setUsers).catch(() => {});
+  useEffect(() => { loadUsers(); }, []);
+
+  const createUser = async (e) => {
+    e.preventDefault();
+    setSaving(true); setError('');
+    try {
+      await post('/admin/users', form);
+      setMsg(`User ${form.email} created`);
+      setForm({ email: '', password: '', displayName: '', role: 'member' });
+      setShowCreate(false);
+      loadUsers();
+    } catch (e) { setError(e.message); }
+    finally { setSaving(false); }
+  };
+
+  const saveEdit = async (id) => {
+    setSaving(true); setError('');
+    try {
+      const body = {};
+      if (editRole) body.role = editRole;
+      if (editPassword) body.password = editPassword;
+      await put(`/admin/users/${id}`, body);
+      setEditId(null); setEditRole(''); setEditPassword('');
+      loadUsers();
+    } catch (e) { setError(e.message); }
+    finally { setSaving(false); }
+  };
+
+  const deleteUser = async (id, email) => {
+    if (!confirm(`Delete user ${email}? This cannot be undone.`)) return;
+    try {
+      await del(`/admin/users/${id}`);
+      loadUsers();
+    } catch (e) { setError(e.message); }
+  };
+
+  const ROLES = ['member','uploader','admin'];
+  const ROLE_BADGE = { admin: 'badge-amber', uploader: 'badge-green', member: 'badge-gray' };
+
+  return (
+    <div>
+      {msg && <div style={{ fontSize: 13, color: 'var(--green-hi)', marginBottom: 16, padding: '8px 12px', background: 'rgba(36,80,42,0.15)', border: '1px solid rgba(36,80,42,0.3)', borderRadius: 6 }}>{msg}</div>}
+      {error && <div style={{ fontSize: 13, color: 'var(--red-hi)', marginBottom: 16, padding: '8px 12px', background: 'rgba(138,30,30,0.12)', border: '1px solid rgba(138,30,30,0.3)', borderRadius: 6 }}>{error}</div>}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{users.length} user{users.length !== 1 ? 's' : ''}</span>
+        <button className="btn btn-primary btn-sm" onClick={() => setShowCreate(s => !s)}>
+          {showCreate ? 'Cancel' : '+ New User'}
+        </button>
+      </div>
+
+      {showCreate && (
+        <form onSubmit={createUser} className="card" style={{ padding: 20, marginBottom: 16 }}>
+          <h3 style={{ fontFamily: 'var(--font-display)', color: 'var(--text-0)', marginBottom: 16, fontSize: 15 }}>Create User</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+            <div><label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>Display Name</label><input value={form.displayName} required onChange={e => setForm(f => ({...f, displayName: e.target.value}))} /></div>
+            <div><label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>Email</label><input type="email" value={form.email} required onChange={e => setForm(f => ({...f, email: e.target.value}))} /></div>
+            <div><label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>Password</label><input type="password" value={form.password} required minLength={8} onChange={e => setForm(f => ({...f, password: e.target.value}))} /></div>
+            <div><label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>Role</label>
+              <select value={form.role} onChange={e => setForm(f => ({...f, role: e.target.value}))}>
+                {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+          </div>
+          <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>
+            {saving ? <span className="spinner" style={{ width: 12, height: 12 }} /> : 'Create User'}
+          </button>
+        </form>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {users.map(u => (
+          <div key={u.id} className="card" style={{ padding: '12px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 500, color: 'var(--text-0)', fontSize: 14 }}>{u.display_name}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{u.email}</div>
+              </div>
+              <span className={`badge ${ROLE_BADGE[u.role] || 'badge-gray'}`}>{u.role}</span>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button className="btn btn-ghost btn-sm"
+                  onClick={() => { setEditId(editId === u.id ? null : u.id); setEditRole(u.role); setEditPassword(''); }}>
+                  Edit
+                </button>
+                <button className="btn btn-danger btn-sm" onClick={() => deleteUser(u.id, u.email)}>Delete</button>
+              </div>
+            </div>
+
+            {editId === u.id && (
+              <div style={{ marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap', borderTop: '1px solid var(--border)', paddingTop: 12, alignItems: 'flex-end' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>Role</label>
+                  <select value={editRole} onChange={e => setEditRole(e.target.value)} style={{ width: 'auto' }}>
+                    {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>New Password (optional)</label>
+                  <input type="password" value={editPassword} placeholder="Leave blank to keep current"
+                    onChange={e => setEditPassword(e.target.value)} style={{ width: 200 }} />
+                </div>
+                <button className="btn btn-primary btn-sm" onClick={() => saveEdit(u.id)} disabled={saving}>Save</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setEditId(null)}>Cancel</button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SettingsTab() {
   const { post, put } = useApi();
   const [form, setForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '', newEmail: '' });
@@ -207,10 +336,10 @@ export default function AdminPage() {
   useEffect(() => { loadQueue(); loadStats(); }, []);
   useEffect(() => { if (tab === 'invites') loadInvites(); }, [tab]);
 
-  const approve = async (id) => { await post(`/uploads/${id}/approve`, {}); loadQueue(); };
+  const approve = async (id) => { await post(`/uploads/${id}/approve`, {}); loadQueue(); appEvents.emit('uploadReviewed'); };
   const reject  = async () => {
     await post(`/uploads/${rejectId}/reject`, { reason: rejectReason });
-    setRejectId(null); setRejectReason(''); loadQueue();
+    setRejectId(null); setRejectReason(''); loadQueue(); appEvents.emit('uploadReviewed');
   };
   const createInvite = async () => {
     const inv = await post('/auth/invite', { role: inviteRole, expiresInDays: inviteExpiry });
@@ -261,6 +390,7 @@ export default function AdminPage() {
     ['library', 'Library'],
     ['backup',  'Backup & Restore'],
     ['logs',    'Logs'],
+    ['users',    'Users'],
     ['settings', 'Settings'],
   ];
 
@@ -401,6 +531,7 @@ export default function AdminPage() {
       )}
 
       {tab === 'logs' && <LogsTab token={token} />}
+      {tab === 'users' && <UsersTab />}
 
       {tab === 'settings' && <SettingsTab />}
 

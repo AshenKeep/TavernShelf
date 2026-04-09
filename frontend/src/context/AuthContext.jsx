@@ -3,9 +3,24 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 const API = '/api';
 const AuthContext = createContext(null);
 
+// Simple event bus for cross-component communication
+const eventBus = {
+  listeners: {},
+  on(event, fn) {
+    if (!this.listeners[event]) this.listeners[event] = new Set();
+    this.listeners[event].add(fn);
+    return () => this.listeners[event].delete(fn);
+  },
+  emit(event, data) {
+    (this.listeners[event] || new Set()).forEach(fn => fn(data));
+  },
+};
+
+export const appEvents = eventBus;
+
 export function AuthProvider({ children }) {
-  const [user, setUser]     = useState(null);
-  const [token, setToken]   = useState(() => localStorage.getItem('ts_token'));
+  const [user, setUser]       = useState(null);
+  const [token, setToken]     = useState(() => localStorage.getItem('ts_token'));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

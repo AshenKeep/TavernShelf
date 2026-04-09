@@ -4,6 +4,7 @@ import { v4 as uuid } from 'uuid';
 import { getDb, dbGet, dbRun, dbAll } from '../db/database.js';
 import { LIBRARY_PATH, SUPPORTED_EXTENSIONS, FILE_TYPE_MAP } from '../config.js';
 import { generateCover } from './coverService.js';
+import { autoFetchMetadata } from './metadataService.js';
 import { logger } from './logger.js';
 
 const now = () => Math.floor(Date.now() / 1000);
@@ -83,6 +84,11 @@ async function addItem(db, fullPath, relPath, stat, ext) {
       (id, path, filename, title, file_type, file_size, cover_path, metadata_source, created_at, updated_at)
     VALUES ($1,$2,$3,$4,$5,$6,$7,'filename',$8,$8)
   `, [id, relPath, filename, title, fileType, stat.size, coverPath, now()]);
+
+  // Auto-fetch metadata in background — non-blocking, only for PDFs and CBZs
+  if (fileType === 'pdf' || fileType === 'cbz') {
+    setImmediate(() => autoFetchMetadata(id, title, fullPath).catch(() => {}));
+  }
 }
 
 async function rebuildFolders(db) {
