@@ -90,6 +90,8 @@ async function migrate(db) {
       name       TEXT NOT NULL,
       parent_id  TEXT REFERENCES folders(id),
       item_count INTEGER NOT NULL DEFAULT 0,
+      is_module  BOOLEAN NOT NULL DEFAULT FALSE,
+      managed    TEXT DEFAULT NULL,
       created_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
     );
 
@@ -163,10 +165,18 @@ async function migrate(db) {
   `);
   console.log('[DB] Schema ready');
 
+  // Add folder management columns for existing installs
+  await db.exec(`ALTER TABLE folders ADD COLUMN IF NOT EXISTS is_module BOOLEAN NOT NULL DEFAULT FALSE`);
+  await db.exec(`ALTER TABLE folders ADD COLUMN IF NOT EXISTS managed TEXT DEFAULT NULL`);
+
   // Add locked_fields column if it doesn't exist (migration for existing installs)
   await db.exec(`
     ALTER TABLE library_items ADD COLUMN IF NOT EXISTS locked_fields TEXT DEFAULT '[]'
   `);
+
+  // Add folder management columns for existing installs
+  await db.exec(`ALTER TABLE folders ADD COLUMN IF NOT EXISTS is_module BOOLEAN NOT NULL DEFAULT FALSE`);
+  await db.exec(`ALTER TABLE folders ADD COLUMN IF NOT EXISTS managed TEXT DEFAULT NULL`);
 
   // Fix cover_path entries that are missing the /covers/ prefix
   // (written incorrectly in early versions)

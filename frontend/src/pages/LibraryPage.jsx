@@ -135,7 +135,7 @@ export default function LibraryPage() {
             file_type    && { label: file_type.toUpperCase(), key: 'file_type' },
             folder       && { label: `📁 ${folder}`, key: 'folder' },
           ].filter(Boolean).map(f => (
-            <span key={f.key} className="badge badge-purple" style={{ cursor: 'pointer', gap: 4 }}
+            <span key={f.key} className="badge badge-amber" style={{ cursor: 'pointer', gap: 4 }}
               onClick={() => updateParam(f.key, '')}>
               {f.label} ×
             </span>

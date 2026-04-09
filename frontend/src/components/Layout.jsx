@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useAuth, appEvents } from '../context/AuthContext.jsx';
 import { useApi } from '../hooks/useApi.js';
 
-const VERSION = '0.1.1';
+const VERSION = '0.1.2';
 
 const Icon = ({ d, size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -60,6 +60,8 @@ function FolderNode({ folder, activeFolder, onSelect, onCreateChild, isAdmin, de
           onClick={() => { onSelect(folder.path); if (folder.children?.length) setOpen(o => !o); }}>
           <Icon d={ICONS.folder} size={12} />
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{folder.name}</span>
+          {folder.is_module && <span style={{ fontSize: 9, color: 'var(--amber)', background: 'rgba(200,136,42,0.15)', padding: '0 4px', borderRadius: 3, flexShrink: 0 }}>M</span>}
+          {folder.managed === 'manual' && <span style={{ fontSize: 9, color: 'var(--stone-hi)', flexShrink: 0 }}>🔒</span>}
           <span style={{ fontSize: 10, color: 'var(--text-3)', flexShrink: 0 }}>{folder.item_count}</span>
         </span>
         {isAdmin && (

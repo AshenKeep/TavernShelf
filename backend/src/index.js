@@ -60,7 +60,7 @@ app.use('/api/admin',    adminRoutes);
 app.use('/api/campaigns', campaignRoutes);
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', version: '0.1.1', uptime: Math.floor(process.uptime()) });
+  res.json({ status: 'ok', version: '0.1.2', uptime: Math.floor(process.uptime()) });
 });
 
 // Serve cover images from the covers volume
@@ -78,7 +78,7 @@ if (existsSync(publicDir)) {
   app.use(express.static(publicDir, { index: 'index.html' }));
   app.use((req, res) => res.sendFile(join(publicDir, 'index.html')));
 } else {
-  app.use((req, res) => res.json({ message: 'TavernShelf API v0.1.1 — frontend not built' }));
+  app.use((req, res) => res.json({ message: 'TavernShelf API v0.1.2 — frontend not built' }));
 }
 
 // Error handler
@@ -98,7 +98,7 @@ process.on('uncaughtException', (err) => {
 });
 
 async function start() {
-  logger.info('Boot', 'TavernShelf v0.1.1 starting');
+  logger.info('Boot', 'TavernShelf v0.1.2 starting');
   const db = await getDb();
 
   const existing = await dbGet(db, "SELECT id FROM users WHERE role = 'admin'");
@@ -112,7 +112,7 @@ async function start() {
 
   app.listen(PORT, '0.0.0.0', () => {
     logger.info('Boot', `Listening on :${PORT}`, { library: process.env.LIBRARY_PATH, db: 'PGlite' });
-    console.log(`[TavernShelf] v0.1.1 listening on :${PORT}`);
+    console.log(`[TavernShelf] v0.1.2 listening on :${PORT}`);
     console.log(`[TavernShelf] Library: ${process.env.LIBRARY_PATH}`);
   });
 

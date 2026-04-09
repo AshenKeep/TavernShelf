@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useApi } from '../hooks/useApi.js';
+import ModuleFolderModal from './ModuleFolderModal.jsx';
 
 const TTRPG_SYSTEMS = ['D&D 5e','D&D 5.5e','D&D 3.5e','D&D 4e','OSE','Pathfinder 1e','Pathfinder 2e','Call of Cthulhu','Shadowrun','Starfinder','Forbidden Lands','Savage Worlds','Year Zero Engine','GURPS','FATE Core','Blades in the Dark','Cairn','Mothership','Mörk Borg','Other'];
 const CONTENT_TYPES = ['Core Rulebook','Supplement','Adventure Module','Sourcebook','Bestiary','Campaign Setting','Magic Items','Pregen Characters','Battle Maps','Tokens','Encounter','Quick Reference','System Reference','Other'];
@@ -74,6 +75,8 @@ export default function MetadataEditor({ item, onClose, onSave }) {
   const [fetchingCover, setFetchingCover] = useState(false);
 
   const [saving, setSaving]               = useState(false);
+  const [moduleModal, setModuleModal]     = useState(null); // { itemId, system }
+  const [modulePrompt, setModulePrompt]   = useState(null); // { itemId, suggestedName, expectedDir }
   const [writing, setWriting]             = useState(false);
   const [writeMsg, setWriteMsg]           = useState('');
   const [writeError, setWriteError]       = useState('');
@@ -152,6 +155,14 @@ export default function MetadataEditor({ item, onClose, onSave }) {
         coverUrl:    coverUrl || null,
         source:      'manual',
       });
+      // Check if organiser needs a module folder name
+      if (updated._organised?.needsModuleFolder) {
+        setModulePrompt({
+          itemId:       item.id,
+          suggestedName: updated._organised.suggestedName,
+          expectedDir:  updated._organised.expectedDir,
+        });
+      }
       onSave(updated);
     } catch (e) { setError(e.message); }
     finally { setSaving(false); }
@@ -417,5 +428,14 @@ export default function MetadataEditor({ item, onClose, onSave }) {
 
       </div>
     </div>
+    {modulePrompt && (
+      <ModuleFolderModal
+        itemId={modulePrompt.itemId}
+        suggestedName={modulePrompt.suggestedName}
+        expectedDir={modulePrompt.expectedDir}
+        onClose={() => setModulePrompt(null)}
+        onMoved={() => setModulePrompt(null)}
+      />
+    )}
   );
 }

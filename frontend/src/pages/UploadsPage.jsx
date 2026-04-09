@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useApi } from '../hooks/useApi.js';
 import { useAuth } from '../context/AuthContext.jsx';
 
-const TTRPG_SYSTEMS = ['D&D 5e','D&D 3.5e','D&D 4e','OSE','Pathfinder 1e','Pathfinder 2e','Call of Cthulhu','Shadowrun','Starfinder','Forbidden Lands','Savage Worlds','Year Zero Engine','GURPS','FATE Core','Blades in the Dark','Cairn','Mothership','Mörk Borg','Other'];
-const CONTENT_TYPES = ['Core Rulebook','Supplement','Adventure Module','Sourcebook','Bestiary','Campaign Setting','Pregen Characters','Battle Maps','Tokens','Encounter','Quick Reference','System Reference','Other'];
+const TTRPG_SYSTEMS = ['D&D 5e','D&D 5.5e','D&D 3.5e','D&D 4e','OSE','Pathfinder 1e','Pathfinder 2e','Call of Cthulhu','Shadowrun','Starfinder','Forbidden Lands','Savage Worlds','Year Zero Engine','GURPS','FATE Core','Blades in the Dark','Cairn','Mothership','Mörk Borg','Other'];
+const CONTENT_TYPES = ['Core Rulebook','Supplement','Adventure Module','Sourcebook','Bestiary','Campaign Setting','Magic Items','Pregen Characters','Battle Maps','Tokens','Encounter','Quick Reference','System Reference','Other'];
 
 function formatSize(b) {
   if (b < 1024*1024) return `${(b/1024).toFixed(0)} KB`;
@@ -110,7 +110,7 @@ export default function UploadsPage() {
         {[['submit','Submit File'], ['queue','My Queue']].map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)} style={{
             padding: '8px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer', border: 'none',
-            background: 'transparent', borderBottom: tab === key ? '2px solid var(--purple)' : '2px solid transparent',
+            background: 'transparent', borderBottom: tab === key ? '2px solid var(--amber)' : '2px solid transparent',
             color: tab === key ? 'var(--text-0)' : 'var(--text-2)', marginBottom: -1, transition: 'all 0.1s',
           }}>
             {label}
@@ -122,7 +122,7 @@ export default function UploadsPage() {
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* File drop zone */}
           <div style={{
-            border: `2px dashed ${file ? 'var(--purple)' : 'var(--border)'}`,
+            border: `2px dashed ${file ? 'var(--amber)' : 'var(--border)'}`,
             borderRadius: 'var(--radius-lg)', padding: 32, textAlign: 'center',
             background: file ? 'rgba(139,107,200,0.06)' : 'var(--bg-2)',
             transition: 'all 0.15s', cursor: 'pointer',
@@ -193,7 +193,7 @@ export default function UploadsPage() {
 
           {uploading && (
             <div style={{ background: 'var(--bg-3)', borderRadius: 8, overflow: 'hidden', height: 6 }}>
-              <div style={{ width: `${progress}%`, height: '100%', background: 'var(--purple)', transition: 'width 0.2s' }} />
+              <div style={{ width: `${progress}%`, height: '100%', background: 'var(--amber)', transition: 'width 0.2s' }} />
             </div>
           )}
 

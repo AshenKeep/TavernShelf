@@ -5,6 +5,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.2] — 2026-04-09
+
+### Added — Library Organisation
+
+- **First-run setup wizard** — on first boot after pointing at a library, admin is shown a wizard asking whether to enable auto-organisation. Runs a full organise if yes. Can be re-triggered from Admin → Organisation
+- **Auto-organisation** — when saving metadata with System + Content Type, file is automatically moved to the correct folder. Structure:
+  - `System/Content Type/filename`
+  - `System/Adventure Module/Adventure Name/filename` (prompts for adventure folder name)
+  - `Unsorted/filename` (files without system or content type)
+- **Module folders** — flag a folder as a Module folder (`M` badge in sidebar). Files in manually managed folders (`🔒`) are never auto-moved
+- **Misplaced items panel** — Admin → Organisation shows all files not in their expected location, with current path, expected path, and individual Move button
+- **Organise All** — moves all misplaced files at once, respects manual folder locks
+- **Folder flags** — `PUT /api/library/folders/:id` sets `is_module` and `managed` (auto/manual/null)
+- New DB columns: `folders.is_module`, `folders.managed`
+- New service: `organiserService.js` (path generation, move, misplaced detection)
+- New endpoints: `GET /library/misplaced`, `POST /library/organise`, `POST /library/items/:id/organise`, `GET/PUT /library/organiser-settings`
+
+### Changed
+- Metadata save (`PUT /library/items/:id/metadata`) now triggers auto-organise if enabled
+- `rebuildFolders` in scanner no longer deletes manually-created empty folders
+- Folder creation (admin) writes directly to `folders` table — appears in upload dropdown immediately
+
+---
+
 ## [0.1.1] — 2026-04-09
 
 ### Fixed

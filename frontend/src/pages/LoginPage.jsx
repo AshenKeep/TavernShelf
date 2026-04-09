@@ -67,7 +67,7 @@ export default function LoginPage() {
 
           <p style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'var(--text-3)' }}>
             Have an invite?{' '}
-            <Link to="/register" style={{ color: 'var(--purple-hi)' }}>Create account</Link>
+            <Link to="/register" style={{ color: 'var(--amber-hi)' }}>Create account</Link>
           </p>
         </div>
       </div>

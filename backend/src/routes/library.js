@@ -7,6 +7,7 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 import { LIBRARY_PATH } from '../config.js';
 import { fetchMetadataByTitle, fetchMetadataByIsbn, applyMetadata, downloadCover } from '../services/metadataService.js';
 import { readFileMetadata, writeFileMetadata } from '../services/fileMetadataService.js';
+import { organiseItem, organiseAll, getMisplacedItems, getExpectedPath, getModulePath } from '../services/organiserService.js';
 import { scanLibrary } from '../services/libraryScanner.js';
 
 const router = Router();
@@ -132,7 +133,18 @@ router.put('/items/:id/metadata', requireAuth, requireRole('admin'), async (req,
   try {
     const updated = await applyMetadata(req.params.id, req.body);
     if (!updated) return res.status(404).json({ error: 'Not found' });
-    res.json(parseItem(updated));
+
+    // After save, try to organise the file into the correct folder
+    const organiseResult = await organiseItem(req.params.id, req.body.moduleFolder || null);
+
+    const parsed = parseItem(updated);
+    // If it moved, refresh item from DB to get new path
+    if (organiseResult.moved) {
+      const db = await getDb();
+      const refreshed = await dbGet(db, 'SELECT * FROM library_items WHERE id = $1', [req.params.id]);
+      return res.json({ ...parseItem(refreshed), _organised: organiseResult });
+    }
+    res.json({ ...parsed, _organised: organiseResult });
   } catch (e) { console.error('[Library] Metadata update:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
@@ -219,6 +231,102 @@ router.put('/items/:id/locked-fields', requireAuth, requireRole('admin'), async 
     );
     res.json({ lockedFields });
   } catch (e) { console.error('[Library] Lock fields:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+
+// GET /api/library/misplaced — items not in their expected folder
+router.get('/misplaced', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const items = await getMisplacedItems();
+    res.json(items);
+  } catch (e) { console.error('[Library] Misplaced:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/library/organise — move all misplaced items
+router.post('/organise', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const results = await organiseAll();
+    res.json(results);
+  } catch (e) { console.error('[Library] Organise:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/library/items/:id/organise — move single item, optionally with module folder name
+router.post('/items/:id/organise', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const result = await organiseItem(req.params.id, req.body.moduleFolder || null);
+    res.json(result);
+  } catch (e) { console.error('[Library] Organise item:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// GET /api/library/organiser-settings
+router.get('/organiser-settings', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const autoOrganise   = await getOrganiserSetting('auto_organise');
+    const setupComplete  = await getOrganiserSetting('setup_complete');
+    res.json({ auto_organise: autoOrganise === 'true', setup_complete: setupComplete === 'true' });
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+// PUT /api/library/organiser-settings
+router.put('/organiser-settings', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    if (req.body.auto_organise !== undefined) await setOrganiserSetting('auto_organise', req.body.auto_organise ? 'true' : 'false');
+    if (req.body.setup_complete !== undefined) await setOrganiserSetting('setup_complete', req.body.setup_complete ? 'true' : 'false');
+    res.json({ message: 'Settings saved' });
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+// PUT /api/library/folders/:id — update folder flags
+router.put('/folders/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { is_module, managed } = req.body;
+    const db = await getDb();
+    const folder = await dbGet(db, 'SELECT id FROM folders WHERE id = $1', [req.params.id]);
+    if (!folder) return res.status(404).json({ error: 'Folder not found' });
+    if (is_module !== undefined) await dbRun(db, 'UPDATE folders SET is_module = $1 WHERE id = $2', [!!is_module, req.params.id]);
+    if (managed !== undefined) await dbRun(db, 'UPDATE folders SET managed = $1 WHERE id = $2', [managed || null, req.params.id]);
+    const updated = await dbGet(db, 'SELECT * FROM folders WHERE id = $1', [req.params.id]);
+    res.json(updated);
+  } catch (e) { console.error('[Library] Folder update:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+
+// GET /api/library/misplaced — get items not in their expected location
+router.get('/misplaced', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    res.json(await getMisplacedItems());
+  } catch (e) { console.error('[Library] Misplaced:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/library/organise — move a single item to its expected location
+router.post('/items/:id/organise', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const result = await organiseItem(req.params.id, req.body.moduleName || null);
+    if (result.needsModuleName) return res.json({ needsModuleName: true, system: result.system });
+    res.json({ moved: result.moved, reason: result.reason });
+  } catch (e) { console.error('[Library] Organise item:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/library/organise-all — move all misplaced items
+router.post('/organise-all', requireAuth, requireRole('admin'), async (req, res) => {
+  res.json({ message: 'Organising library…' });
+  organiseAll().catch(e => console.error('[Organiser] Error:', e.message));
+});
+
+// PUT /api/library/folders/:id — update folder flags (is_module, managed)
+router.put('/folders/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { is_module, managed } = req.body;
+    const db = await getDb();
+    const folder = await dbGet(db, 'SELECT * FROM folders WHERE id = $1', [req.params.id]);
+    if (!folder) return res.status(404).json({ error: 'Folder not found' });
+
+    if (is_module !== undefined) await dbRun(db, 'UPDATE folders SET is_module=$1 WHERE id=$2', [is_module, folder.id]);
+    if (managed !== undefined)   await dbRun(db, 'UPDATE folders SET managed=$1 WHERE id=$2',   [managed || null, folder.id]);
+
+    const updated = await dbGet(db, 'SELECT * FROM folders WHERE id = $1', [folder.id]);
+    res.json(updated);
+  } catch (e) { console.error('[Library] Folder update:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
 // POST /api/library/scan

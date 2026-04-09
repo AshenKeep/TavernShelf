@@ -115,6 +115,294 @@ function LogsTab({ token }) {
 
 
 
+
+function OrganisationTab() {
+  const { get, post, put } = useApi();
+  const [settings, setSettings]     = useState({ auto_organise: false, setup_complete: false });
+  const [misplaced, setMisplaced]   = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [organising, setOrganising] = useState(false);
+  const [movingId, setMovingId]     = useState(null);
+  const [results, setResults]       = useState(null);
+  const [error, setError]           = useState('');
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [s, m] = await Promise.all([
+        get('/library/organiser-settings'),
+        get('/library/misplaced'),
+      ]);
+      setSettings(s);
+      setMisplaced(m);
+    } catch (e) { setError(e.message); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const toggleAutoOrganise = async () => {
+    const next = !settings.auto_organise;
+    await put('/library/organiser-settings', { auto_organise: next });
+    setSettings(s => ({ ...s, auto_organise: next }));
+  };
+
+  const organiseAll = async () => {
+    setOrganising(true); setResults(null); setError('');
+    try {
+      const r = await post('/library/organise', {});
+      setResults(r);
+      await load();
+    } catch (e) { setError(e.message); }
+    finally { setOrganising(false); }
+  };
+
+  const moveOne = async (item) => {
+    setMovingId(item.id);
+    try {
+      await post(`/library/items/${item.id}/organise`, {});
+      setMisplaced(prev => prev.filter(i => i.id !== item.id));
+    } catch (e) { setError(e.message); }
+    finally { setMovingId(null); }
+  };
+
+  const resetSetup = async () => {
+    await put('/library/organiser-settings', { setup_complete: false });
+    window.location.reload();
+  };
+
+  if (loading) return <div style={{ padding: 40, color: 'var(--text-3)', textAlign: 'center' }}>Loading…</div>;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {error && <div style={{ fontSize: 13, color: 'var(--red-hi)', padding: '8px 12px', background: 'rgba(138,30,30,0.12)', border: '1px solid rgba(138,30,30,0.3)', borderRadius: 6 }}>{error}</div>}
+
+      {/* Settings card */}
+      <div className="card" style={{ padding: 20 }}>
+        <h3 style={{ fontFamily: 'var(--font-display)', color: 'var(--text-0)', marginBottom: 14, fontSize: 15 }}>
+          Auto-Organisation
+        </h3>
+        <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 16, lineHeight: 1.6 }}>
+          When enabled, saving metadata with a System and Content Type will automatically move the file to the correct folder. Files in manually managed folders are never moved.
+        </p>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--text-1)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={settings.auto_organise} onChange={toggleAutoOrganise} />
+            Auto-organise on metadata save
+          </label>
+          <button className="btn btn-primary btn-sm" onClick={organiseAll} disabled={organising}>
+            {organising ? <><span className="spinner" style={{ width: 12, height: 12 }}/> Organising…</> : '↺ Organise All Now'}
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={resetSetup} title="Show setup wizard again">
+            ↺ Re-run Setup Wizard
+          </button>
+        </div>
+        {results && (
+          <div style={{ marginTop: 14, fontSize: 13 }}>
+            <span style={{ color: 'var(--green-hi)', marginRight: 16 }}>✓ {results.moved} moved</span>
+            {results.skipped > 0 && <span style={{ color: 'var(--amber-hi)', marginRight: 16 }}>⚠ {results.skipped} skipped</span>}
+            {results.errors?.length > 0 && <span style={{ color: 'var(--red-hi)' }}>✗ {results.errors.length} errors</span>}
+          </div>
+        )}
+      </div>
+
+      {/* Misplaced items */}
+      <div className="card" style={{ padding: 20 }}>
+        <h3 style={{ fontFamily: 'var(--font-display)', color: 'var(--text-0)', marginBottom: 6, fontSize: 15 }}>
+          Misplaced Files
+          {misplaced.length > 0 && <span className="badge badge-amber" style={{ marginLeft: 8, fontSize: 11 }}>{misplaced.length}</span>}
+        </h3>
+        <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14, lineHeight: 1.6 }}>
+          Files whose current location doesn't match their metadata. Files in manually managed folders are excluded.
+        </p>
+
+        {misplaced.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-3)', fontSize: 13 }}>
+            ✓ All files are in their correct locations
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {misplaced.map(item => (
+              <div key={item.id} style={{ background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 500, fontSize: 13, color: 'var(--text-0)', marginBottom: 4 }}>{item.title}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 2 }}>
+                      <span style={{ color: 'var(--red-hi)' }}>Current: </span>{item.current_path}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                      <span style={{ color: 'var(--green-hi)' }}>Should be: </span>{item.expected_path}
+                    </div>
+                  </div>
+                  <button className="btn btn-primary btn-sm" onClick={() => moveOne(item)} disabled={movingId === item.id} style={{ flexShrink: 0 }}>
+                    {movingId === item.id ? <span className="spinner" style={{ width: 12, height: 12 }}/> : '→ Move'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+function OrganisationTab() {
+  const { get, put, post } = useApi();
+  const [settings, setSettings]       = useState({});
+  const [misplaced, setMisplaced]     = useState([]);
+  const [folders, setFolders]         = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [organising, setOrganising]   = useState(false);
+  const [movingId, setMovingId]       = useState(null);
+  const [msg, setMsg]                 = useState('');
+  const [err, setErr]                 = useState('');
+
+  const load = async () => {
+    const [s, m, f] = await Promise.all([
+      get('/admin/settings').catch(() => ({})),
+      get('/library/misplaced').catch(() => []),
+      get('/library/folders').catch(() => []),
+    ]);
+    setSettings(s);
+    setMisplaced(m);
+    // Flatten folder tree
+    const flat = [];
+    const flatten = (nodes) => nodes.forEach(n => { flat.push(n); flatten(n.children || []); });
+    flatten(f);
+    setFolders(flat);
+  };
+
+  useEffect(() => { load().finally(() => setLoading(false)); }, []);
+
+  const toggleAutoOrganise = async (val) => {
+    await put('/admin/settings', { 'library.auto_organise': val ? 'true' : 'false' });
+    setSettings(s => ({ ...s, 'library.auto_organise': val ? 'true' : 'false' }));
+    setMsg(val ? 'Auto-organise enabled' : 'Auto-organise disabled');
+  };
+
+  const organiseAll = async () => {
+    setOrganising(true); setMsg(''); setErr('');
+    try {
+      await post('/library/organise-all', {});
+      setMsg('Organising in background — refresh in a moment');
+      setTimeout(() => load(), 3000);
+    } catch (e) { setErr(e.message); }
+    finally { setOrganising(false); }
+  };
+
+  const moveItem = async (item) => {
+    setMovingId(item.id); setMsg(''); setErr('');
+    try {
+      await post(`/library/items/${item.id}/organise`, {});
+      setMisplaced(prev => prev.filter(i => i.id !== item.id));
+      setMsg(`Moved: ${item.title}`);
+    } catch (e) { setErr(e.message); }
+    finally { setMovingId(null); }
+  };
+
+  const updateFolder = async (folderId, changes) => {
+    const updated = await put(`/library/folders/${folderId}`, changes);
+    setFolders(prev => prev.map(f => f.id === folderId ? { ...f, ...updated } : f));
+  };
+
+  const autoOrganise = settings['library.auto_organise'] === 'true';
+
+  if (loading) return <div style={{ padding: 40, color: 'var(--text-3)', textAlign: 'center' }}>Loading…</div>;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+      {/* Auto-organise toggle */}
+      <div className="card" style={{ padding: 20 }}>
+        <h3 style={{ fontFamily: 'var(--font-display)', color: 'var(--text-0)', marginBottom: 8, fontSize: 15 }}>Auto-Organise</h3>
+        <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 16, lineHeight: 1.6 }}>
+          When enabled, saving metadata automatically moves the file to the correct folder based on its System and Content Type.
+        </p>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: 'var(--text-1)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={autoOrganise} onChange={e => toggleAutoOrganise(e.target.checked)} />
+            Enable auto-organise
+          </label>
+          <button className="btn btn-ghost btn-sm" onClick={organiseAll} disabled={organising}>
+            {organising ? <><span className="spinner" style={{ width: 12, height: 12 }} /> Organising…</> : '↺ Organise All Now'}
+          </button>
+        </div>
+        {msg && <div style={{ fontSize: 13, color: 'var(--green-hi)', marginTop: 10 }}>✓ {msg}</div>}
+        {err && <div style={{ fontSize: 13, color: 'var(--red-hi)', marginTop: 10 }}>✗ {err}</div>}
+      </div>
+
+      {/* Misplaced items */}
+      <div className="card" style={{ padding: 20 }}>
+        <h3 style={{ fontFamily: 'var(--font-display)', color: 'var(--text-0)', marginBottom: 8, fontSize: 15 }}>
+          Misplaced Files
+          {misplaced.length > 0 && <span className="badge badge-amber" style={{ marginLeft: 8, fontSize: 11 }}>{misplaced.length}</span>}
+        </h3>
+        <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14, lineHeight: 1.6 }}>
+          Files whose location on disk doesn't match their metadata.
+        </p>
+        {misplaced.length === 0 ? (
+          <div style={{ fontSize: 13, color: 'var(--green-hi)' }}>✓ All files are in the correct location</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {misplaced.map(item => (
+              <div key={item.id} style={{ background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px' }}>
+                <div style={{ fontWeight: 500, color: 'var(--text-0)', fontSize: 13, marginBottom: 6 }}>{item.title}</div>
+                <div style={{ fontSize: 11, fontFamily: 'monospace', marginBottom: 4 }}>
+                  <span style={{ color: 'var(--text-3)' }}>Current: </span>
+                  <span style={{ color: 'var(--red-hi)' }}>{item.current_path}</span>
+                </div>
+                <div style={{ fontSize: 11, fontFamily: 'monospace', marginBottom: 10 }}>
+                  <span style={{ color: 'var(--text-3)' }}>Should be: </span>
+                  <span style={{ color: 'var(--green-hi)' }}>{item.expected_path}</span>
+                </div>
+                <button className="btn btn-primary btn-sm" onClick={() => moveItem(item)} disabled={movingId === item.id}>
+                  {movingId === item.id ? <span className="spinner" style={{ width: 12, height: 12 }} /> : '→ Move to correct location'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Folder management */}
+      <div className="card" style={{ padding: 20 }}>
+        <h3 style={{ fontFamily: 'var(--font-display)', color: 'var(--text-0)', marginBottom: 8, fontSize: 15 }}>Folder Settings</h3>
+        <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14, lineHeight: 1.6 }}>
+          Mark folders as Module folders and set how they are managed.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 360, overflow: 'auto' }}>
+          {folders.map(f => (
+            <div key={f.id} style={{
+              display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
+              background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12,
+            }}>
+              <span style={{ flex: 1, color: 'var(--text-1)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {f.path}
+              </span>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', flexShrink: 0 }}>
+                <input type="checkbox" checked={!!f.is_module}
+                  onChange={e => updateFolder(f.id, { is_module: e.target.checked })} />
+                <span style={{ color: 'var(--text-2)' }}>Module</span>
+              </label>
+              {f.is_module && (
+                <select value={f.managed || 'auto'} onChange={e => updateFolder(f.id, { managed: e.target.value })}
+                  style={{ width: 'auto', fontSize: 11, padding: '2px 6px' }}>
+                  <option value="auto">Auto</option>
+                  <option value="manual">Manual</option>
+                </select>
+              )}
+              <span style={{ color: 'var(--text-3)', flexShrink: 0 }}>{f.item_count}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
 function EmailTab() {
   const { get, post, put } = useApi();
   const [form, setForm] = useState({ host:'', port:'587', secure:false, user:'', pass:'', from:'', enabled:false });
@@ -501,11 +789,13 @@ export default function AdminPage() {
     ['queue',   'Upload Queue'],
     ['invites', 'Invites'],
     ['library', 'Library'],
+    ['organisation', 'Organisation'],
     ['backup',  'Backup & Restore'],
     ['logs',    'Logs'],
     ['users',    'Users'],
     ['settings', 'Settings'],
     ['email',    'Email'],
+    ['organisation', 'Organisation'],
   ];
 
   return (
@@ -644,6 +934,8 @@ export default function AdminPage() {
         </div>
       )}
 
+      {tab === 'organisation' && <OrganisationTab />}
+
       {tab === 'backup' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="card" style={{ padding: 20 }}>
@@ -673,6 +965,7 @@ export default function AdminPage() {
 
       {tab === 'settings' && <SettingsTab />}
       {tab === 'email' && <EmailTab />}
+      {tab === 'organisation' && <OrganisationTab />}
 
     </div>
   );

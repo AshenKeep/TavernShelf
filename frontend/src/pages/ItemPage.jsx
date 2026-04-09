@@ -98,7 +98,7 @@ export default function ItemPage() {
           )}
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
-            {item.system       && <span className="badge badge-purple">{item.system}</span>}
+            {item.system       && <span className="badge badge-amber">{item.system}</span>}
             {item.content_type && <span className="badge badge-gold">{item.content_type}</span>}
             {item.year         && <span className="badge badge-gray">{item.year}</span>}
             <span className="badge badge-gray">{item.file_type.toUpperCase()}</span>

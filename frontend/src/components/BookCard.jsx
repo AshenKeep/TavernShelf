@@ -78,7 +78,7 @@ export default function BookCard({ item }) {
           </div>
         )}
         <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', paddingTop: 6 }}>
-          {item.system && <span className="badge badge-purple" style={{ fontSize: 10 }}>{item.system}</span>}
+          {item.system && <span className="badge badge-amber" style={{ fontSize: 10 }}>{item.system}</span>}
           {item.content_type && <span className="badge badge-gray" style={{ fontSize: 10 }}>{item.content_type}</span>}
           <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-3)' }}>{formatSize(item.file_size)}</span>
         </div>

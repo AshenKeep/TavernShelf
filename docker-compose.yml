@@ -3,7 +3,7 @@ services:
     # :latest = stable release
     # :dev    = latest dev build (may be unstable)
     # :x.y.z  = specific version
-    image: ghcr.io/ashenkeep/tavernshelf:0.1.1
+    image: ghcr.io/ashenkeep/tavernshelf:0.1.2
     container_name: tavernshelf
     ports:
       - "${PORT:-7624}:3000"

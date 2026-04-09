@@ -265,6 +265,33 @@ router.get('/logs/:filename', async (req, res) => {
 });
 
 
+
+// ── General settings ──────────────────────────────────────
+
+router.get('/settings', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const db = await getDb();
+    const rows = await dbAll(db, 'SELECT key, value FROM settings');
+    const settings = {};
+    for (const row of rows) settings[row.key] = row.value;
+    res.json(settings);
+  } catch (e) { logger.error('Admin', 'Get settings error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
+});
+
+router.put('/settings', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const db = await getDb();
+    for (const [key, value] of Object.entries(req.body)) {
+      await dbRun(db,
+        'INSERT INTO settings (key, value, updated_at) VALUES ($1,$2,$3) ON CONFLICT (key) DO UPDATE SET value=$2, updated_at=$3',
+        [key, String(value), Math.floor(Date.now()/1000)]
+      );
+    }
+    logger.event('Admin', 'Settings updated', { keys: Object.keys(req.body), by: req.user.email });
+    res.json({ message: 'Settings saved' });
+  } catch (e) { logger.error('Admin', 'Save settings error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
+});
+
 // ── Email settings ────────────────────────────────────────
 
 router.get('/settings/email', requireAuth, requireRole('admin'), async (req, res) => {
