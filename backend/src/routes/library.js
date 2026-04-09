@@ -310,7 +310,9 @@ router.post('/items/:id/organise', requireAuth, requireRole('admin'), async (req
 // POST /api/library/organise-all — move all misplaced items
 router.post('/organise-all', requireAuth, requireRole('admin'), async (req, res) => {
   res.json({ message: 'Organising library…' });
-  organiseAll().catch(e => console.error('[Organiser] Error:', e.message));
+  organiseAll()
+    .then(() => scanLibrary())
+    .catch(e => console.error('[Organiser] Error:', e.message));
 });
 
 // PUT /api/library/folders/:id — update folder flags (is_module, managed)

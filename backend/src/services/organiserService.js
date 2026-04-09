@@ -72,8 +72,29 @@ export async function moveItem(db, item, newRelPath) {
     [finalRel, now(), item.id]
   );
 
+  // Update folder item counts for old and new folders
+  const oldDir = dirname(item.path);
+  const newDir = dirname(finalRel);
+  await updateFolderCount(db, oldDir);
+  await updateFolderCount(db, newDir);
+
   logger.event('Organiser', 'File moved', { from: item.path, to: finalRel });
   return { ...item, path: finalRel };
+}
+
+async function updateFolderCount(db, folderPath) {
+  if (!folderPath || folderPath === '.') return;
+  const row = await db.query(
+    "SELECT COUNT(*) as n FROM library_items WHERE path LIKE $1",
+    [folderPath + '/%']
+  );
+  const count = parseInt(row.rows[0]?.n || 0);
+  await dbRun(db, 'UPDATE folders SET item_count=$1 WHERE path=$2', [count, folderPath]);
+  // Recurse up to update parent counts
+  const parent = dirname(folderPath);
+  if (parent && parent !== '.' && parent !== folderPath) {
+    await updateFolderCount(db, parent);
+  }
 }
 
 // ── Check if a path is inside a manually-managed module folder ──
