@@ -7,6 +7,8 @@ import SetupWizard from './components/SetupWizard.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import RegisterPage from './pages/RegisterPage.jsx';
 import LibraryPage from './pages/LibraryPage.jsx';
+import SearchPage from './pages/SearchPage.jsx';
+import FileExplorerPage from './pages/FileExplorerPage.jsx';
 import ItemPage from './pages/ItemPage.jsx';
 import ReaderPage from './pages/ReaderPage.jsx';
 import UploadsPage from './pages/UploadsPage.jsx';
@@ -32,13 +34,10 @@ function AppRoutes() {
   const [setupNeeded,  setSetupNeeded]  = useState(false);
   const [setupChecked, setSetupChecked] = useState(false);
 
-  // Check on login whether setup wizard needs to show
   useEffect(() => {
     if (!user || user.role !== 'admin') { setSetupChecked(true); return; }
     get('/admin/settings')
-      .then(settings => {
-        setSetupNeeded(settings['library.setup_complete'] !== 'true');
-      })
+      .then(settings => setSetupNeeded(settings['library.setup_complete'] !== 'true'))
       .catch(() => {})
       .finally(() => setSetupChecked(true));
   }, [user?.id]);
@@ -60,6 +59,8 @@ function AppRoutes() {
         <Route path="/read/:id" element={<ProtectedRoute><ReaderPage /></ProtectedRoute>} />
         <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={<LibraryPage />} />
+          <Route path="/search"         element={<SearchPage />} />
+          <Route path="/files"          element={<FileExplorerPage />} />
           <Route path="/item/:id"       element={<ItemPage />} />
           <Route path="/uploads"        element={<UploadsPage />} />
           <Route path="/admin"          element={<ProtectedRoute adminOnly><AdminPage /></ProtectedRoute>} />

@@ -654,16 +654,15 @@ export default function AdminPage() {
   const registerUrl = (t) => `${window.location.origin}/register?invite=${t}`;
 
   const TABS = [
-    ['queue',   'Upload Queue'],
-    ['invites', 'Invites'],
-    ['library', 'Library'],
+    ['queue',        'Upload Queue'],
+    ['invites',      'Invites'],
+    ['library',      'Library'],
+    ['backup',       'Backup & Restore'],
+    ['logs',         'Logs'],
+    ['users',        'Users'],
     ['organisation', 'Organisation'],
-    ['backup',  'Backup & Restore'],
-    ['logs',    'Logs'],
-    ['users',    'Users'],
-    ['settings', 'Settings'],
-    ['email',    'Email'],
-    ['organisation', 'Organisation'],
+    ['email',        'Email'],
+    ['settings',     'Settings'],
   ];
 
   return (

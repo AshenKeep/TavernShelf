@@ -1,9 +1,9 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { useAuth, appEvents } from '../context/AuthContext.jsx';
 import { useApi } from '../hooks/useApi.js';
 
-const VERSION = '0.1.2';
+const VERSION = '0.1.3';
 
 const Icon = ({ d, size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -12,20 +12,22 @@ const Icon = ({ d, size = 18 }) => (
 );
 
 const ICONS = {
-  library: 'M4 19.5A2.5 2.5 0 016.5 17H20M4 19.5A2.5 2.5 0 014 17V5a2 2 0 012-2h14a2 2 0 012 2v12',
-  upload:  'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12',
-  admin:   'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
-  logout:  'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9',
+  search:   'M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z',
+  upload:   'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12',
+  admin:    'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
+  logout:   'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9',
   folder:   'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z',
   campaign: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
-  menu:    'M3 12h18M3 6h18M3 18h18',
-  plus:    'M12 5v14M5 12h14',
+  menu:     'M3 12h18M3 6h18M3 18h18',
+  library:  'M4 19.5A2.5 2.5 0 016.5 17H20M4 19.5A2.5 2.5 0 014 17V5a2 2 0 012-2h14a2 2 0 012 2v12',
+  user:     'M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z',
+  chevron:  'M6 9l6 6 6-6',
 };
 
-// TavernShelf logo SVG — shield with shelves and tankard
-function Logo({ size = 32 }) {
+// TavernShelf logo SVG
+function Logo({ size = 28 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 100 120" fill="none">
+    <svg width={size} height={size * 1.2} viewBox="0 0 100 120" fill="none">
       <path d="M50 5 L95 5 L95 65 Q72 95 50 105 Q28 95 5 65 L5 5 Z" fill="#3d2410" stroke="#c8a050" strokeWidth="2"/>
       <line x1="10" y1="42" x2="90" y2="42" stroke="#7a5228" strokeWidth="2"/>
       <line x1="10" y1="62" x2="90" y2="62" stroke="#7a5228" strokeWidth="2"/>
@@ -45,266 +47,172 @@ function Logo({ size = 32 }) {
   );
 }
 
-function FolderNode({ folder, activeFolder, onSelect, onCreateChild, isAdmin, depth = 0 }) {
-  const [open, setOpen] = useState(depth === 0);
-  return (
-    <li style={{ listStyle: 'none', paddingLeft: depth > 0 ? 10 : 0 }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 4,
-        padding: '3px 6px', borderRadius: 4, cursor: 'pointer',
-        color: activeFolder === folder.path ? 'var(--amber-hi)' : 'var(--text-2)',
-        background: activeFolder === folder.path ? 'rgba(200,136,42,0.12)' : 'transparent',
-        fontSize: 13,
-      }}>
-        <span style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 5, overflow: 'hidden' }}
-          onClick={() => { onSelect(folder.path); if (folder.children?.length) setOpen(o => !o); }}>
-          <Icon d={ICONS.folder} size={12} />
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{folder.name}</span>
-          {folder.is_module && <span style={{ fontSize: 9, color: 'var(--amber)', background: 'rgba(200,136,42,0.15)', padding: '0 4px', borderRadius: 3, flexShrink: 0 }}>M</span>}
-          {folder.managed === 'manual' && <span style={{ fontSize: 9, color: 'var(--stone-hi)', flexShrink: 0 }}>🔒</span>}
-          <span style={{ fontSize: 10, color: 'var(--text-3)', flexShrink: 0 }}>{folder.item_count}</span>
-        </span>
-        {isAdmin && (
-          <button title="Create subfolder" onClick={e => { e.stopPropagation(); onCreateChild(folder.path); }}
-            style={{ opacity: 0, padding: '1px 3px', borderRadius: 3, fontSize: 14, color: 'var(--amber)', lineHeight: 1 }}
-            onMouseEnter={e => e.currentTarget.style.opacity = '1'}
-            onMouseLeave={e => e.currentTarget.style.opacity = '0'}
-            className="_folder-add-btn">+</button>
-        )}
-      </div>
-      {open && folder.children?.length > 0 && (
-        <ul style={{ paddingLeft: 0 }}>
-          {folder.children.map(c => (
-            <FolderNode key={c.id} folder={c} activeFolder={activeFolder} onSelect={onSelect}
-              onCreateChild={onCreateChild} isAdmin={isAdmin} depth={depth + 1} />
-          ))}
-        </ul>
-      )}
-    </li>
-  );
-}
-
-function CreateFolderModal({ parentPath, onClose, onCreated }) {
-  const { post } = useApi();
-  const [name, setName] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-    setLoading(true); setError('');
-    try {
-      const path = parentPath ? `${parentPath}/${name.trim()}` : name.trim();
-      await post('/admin/folders', { path });
-      onCreated();
-      onClose();
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 200,
-      background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(3px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
-    }} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="card" style={{ width: '100%', maxWidth: 360, padding: 24 }}>
-        <h3 style={{ fontFamily: 'var(--font-display)', color: 'var(--text-0)', marginBottom: 6, fontSize: 16 }}>
-          New Folder
-        </h3>
-        {parentPath && (
-          <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 14 }}>Inside: {parentPath}</p>
-        )}
-        <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <input autoFocus placeholder="Folder name" value={name}
-            onChange={e => setName(e.target.value)} />
-          {error && <div style={{ fontSize: 12, color: 'var(--red-hi)' }}>{error}</div>}
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-primary btn-sm" disabled={loading || !name.trim()}>
-              {loading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : 'Create'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
 export default function Layout() {
   const { user, logout, isAdmin } = useAuth();
-  const { get } = useApi();
-  const navigate = useNavigate();
-  const [folders, setFolders] = useState([]);
-  const [activeFolder, setActiveFolder] = useState(null);
-  const [pendingCount, setPendingCount] = useState(0);
-  const [scanning, setScanning]         = useState(false);
-  const [campaigns, setCampaigns] = useState([]);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [createModal, setCreateModal] = useState(null); // null | parentPath string
+  const { get, post } = useApi();
+  const navigate  = useNavigate();
+  const location  = useLocation();
 
-  const loadFolders = () => get('/library/folders').then(setFolders).catch(() => {});
-  const loadPending = () => { if (isAdmin) get('/uploads?status=pending').then(q => setPendingCount(q.length)).catch(() => {}); };
-  const loadCampaigns = () => get('/campaigns').then(setCampaigns).catch(() => {});
+  const [systems, setSystems]         = useState([]);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [scanning, setScanning]       = useState(false);
+
+  useEffect(() => {
+    get('/library/filters').then(f => setSystems(f.systems || [])).catch(() => {});
+    if (isAdmin) get('/uploads?status=pending').then(q => setPendingCount(q.length)).catch(() => {});
+    const unsub = appEvents.on('uploadReviewed', () => {
+      if (isAdmin) get('/uploads?status=pending').then(q => setPendingCount(q.length)).catch(() => {});
+    });
+    return unsub;
+  }, [user?.id, isAdmin]);
+
   const syncLibrary = async () => {
     setScanning(true);
     try {
       await post('/library/scan', {});
-      // Reload folders after a short delay to let scan finish
-      setTimeout(() => { loadFolders(); setScanning(false); }, 3000);
+      setTimeout(() => {
+        get('/library/filters').then(f => setSystems(f.systems || [])).catch(() => {});
+        setScanning(false);
+      }, 3000);
     } catch { setScanning(false); }
   };
 
+  // Close user menu on outside click
   useEffect(() => {
-    loadFolders();
-    loadPending();
-    loadCampaigns();
-    const unsub1 = appEvents.on('uploadReviewed', loadPending);
-    const unsub2 = appEvents.on('campaignUpdated', loadCampaigns);
-    return () => { unsub1(); unsub2(); };
-  }, [isAdmin]);
+    const handler = (e) => {
+      if (!e.target.closest('._user-menu-root')) setUserMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
-  const handleFolderSelect = (path) => {
-    const next = path === activeFolder ? null : path;
-    setActiveFolder(next);
-    navigate(next ? `/?folder=${encodeURIComponent(path)}` : '/');
-  };
+  const isActive = (path) => location.pathname === path || location.pathname.startsWith(path + '/');
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-      {/* Add hover style for folder + buttons */}
-      <style>{`._folder-add-btn:hover { opacity: 1 !important; background: rgba(200,136,42,0.15); }`}</style>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
 
-      {/* Sidebar */}
-      <aside style={{
-        width: sidebarOpen ? 'var(--sidebar-w)' : 0,
-        minWidth: sidebarOpen ? 'var(--sidebar-w)' : 0,
-        overflow: 'hidden', flexShrink: 0,
-        background: 'var(--bg-1)',
-        borderRight: '1px solid var(--border)',
-        display: 'flex', flexDirection: 'column',
-        transition: 'width 0.2s, min-width 0.2s',
+      {/* ── Top bar ── */}
+      <header style={{
+        height: 'var(--topbar-h)', flexShrink: 0,
+        background: 'var(--bg-1)', borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', gap: 0, padding: '0 12px', zIndex: 50,
       }}>
-        {/* Logo */}
-        <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Logo size={36} />
-            <div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, color: 'var(--text-0)', letterSpacing: '0.04em' }}>
-                TavernShelf
-              </div>
-              <div style={{ fontSize: 10, color: 'var(--text-3)', letterSpacing: '0.06em' }}>
-                {user?.display_name}
-              </div>
-            </div>
-          </div>
+
+        {/* Logo + name */}
+        <button onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderRadius: 6, background: 'none', border: 'none', cursor: 'pointer', marginRight: 8, flexShrink: 0 }}>
+          <Logo size={26} />
+          <span style={{ fontFamily: 'var(--font-display)', fontSize: 16, color: 'var(--amber-hi)', letterSpacing: '0.02em' }}>TavernShelf</span>
+        </button>
+
+        {/* System dropdown */}
+        <div style={{ position: 'relative', marginRight: 4, flexShrink: 0 }}>
+          <select
+            value=""
+            onChange={e => { if (e.target.value) navigate(`/?system=${encodeURIComponent(e.target.value)}`); else navigate('/'); e.target.value = ''; }}
+            style={{
+              background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 6,
+              color: 'var(--text-1)', padding: '5px 28px 5px 10px', fontSize: 13,
+              appearance: 'none', cursor: 'pointer', width: 'auto', minWidth: 120,
+            }}>
+            <option value="">All Systems</option>
+            {systems.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <Icon d={ICONS.chevron} size={12} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-3)' }} />
         </div>
 
-        {/* Nav */}
-        <nav style={{ padding: '10px 10px 0', flexShrink: 0 }}>
+        {/* Nav tabs */}
+        <nav style={{ display: 'flex', alignItems: 'stretch', height: '100%', marginRight: 'auto', gap: 2 }}>
           {[
-            { to: '/',        label: 'Library',  icon: ICONS.library },
-            { to: '/uploads', label: 'Uploads',  icon: ICONS.upload, badge: pendingCount > 0 ? pendingCount : null },
-            { to: '/campaigns', label: 'Campaigns', icon: ICONS.campaign },
-    ...(isAdmin ? [{ to: '/admin', label: 'Admin', icon: ICONS.admin }] : []),
+            { to: '/', label: 'Library', exact: true },
+            { to: '/files', label: 'Files' },
           ].map(item => (
-            <NavLink key={item.to} to={item.to} end={item.to === '/'} style={({ isActive }) => ({
-              display: 'flex', alignItems: 'center', gap: 9,
-              padding: '7px 10px', borderRadius: 6, marginBottom: 2,
-              color: isActive ? 'var(--text-0)' : 'var(--text-2)',
-              background: isActive ? 'var(--bg-3)' : 'transparent',
-              borderLeft: isActive ? '2px solid var(--amber)' : '2px solid transparent',
-              fontSize: 13, fontWeight: 500, transition: 'all 0.1s',
-            })}>
-              <Icon d={item.icon} size={14} />
-              <span style={{ flex: 1 }}>{item.label}</span>
-              {item.badge && <span className="badge badge-amber" style={{ fontSize: 10, padding: '1px 6px' }}>{item.badge}</span>}
+            <NavLink key={item.to} to={item.to} end={item.exact}
+              style={({ isActive }) => ({
+                display: 'flex', alignItems: 'center', padding: '0 14px',
+                fontSize: 13, fontWeight: 500, textDecoration: 'none',
+                color: isActive ? 'var(--text-0)' : 'var(--text-2)',
+                borderBottom: isActive ? '2px solid var(--amber)' : '2px solid transparent',
+                transition: 'all 0.15s',
+              })}>
+              {item.label}
             </NavLink>
           ))}
         </nav>
 
-        {/* Folder tree */}
-        <div style={{ flex: 1, overflow: 'auto', padding: '12px 10px 0' }}>
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8, paddingLeft: 6 }}>
-            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.08em', textTransform: 'uppercase', flex: 1 }}>
-              Folders
-            </span>
-            {isAdmin && (
-              <button title="Create top-level folder" onClick={() => setCreateModal('')}
-                className="btn btn-ghost btn-sm" style={{ padding: '2px 6px', fontSize: 16 }}>+</button>
+        {/* Right side actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+
+          {/* Search */}
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate('/search')} title="Search">
+            <Icon d={ICONS.search} size={15} />
+          </button>
+
+          {/* Sync */}
+          <button className="btn btn-ghost btn-sm" onClick={syncLibrary} disabled={scanning} title="Sync library">
+            <span style={{ fontSize: 14, display: 'inline-block', transform: scanning ? 'none' : undefined, animation: scanning ? 'spin 0.7s linear infinite' : undefined }}>↺</span>
+          </button>
+
+          {/* Campaigns */}
+          <button className={`btn btn-sm ${isActive('/campaigns') ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => navigate('/campaigns')}
+            style={{ gap: 5 }}>
+            <Icon d={ICONS.campaign} size={13} />
+            Campaigns
+          </button>
+
+          {/* Uploads */}
+          <button className={`btn btn-sm ${isActive('/uploads') ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => navigate('/uploads')} title="Uploads" style={{ position: 'relative' }}>
+            <Icon d={ICONS.upload} size={14} />
+            {pendingCount > 0 && (
+              <span style={{ position: 'absolute', top: -4, right: -4, background: 'var(--amber)', color: '#0c0b0a', borderRadius: 99, fontSize: 9, fontWeight: 700, padding: '1px 4px', minWidth: 14, textAlign: 'center' }}>
+                {pendingCount}
+              </span>
+            )}
+          </button>
+
+          {/* Admin */}
+          {isAdmin && (
+            <button className={`btn btn-sm ${isActive('/admin') ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => navigate('/admin')} title="Admin">
+              <Icon d={ICONS.admin} size={14} />
+            </button>
+          )}
+
+          {/* User menu */}
+          <div className="_user-menu-root" style={{ position: 'relative' }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => setUserMenuOpen(o => !o)}
+              style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <Icon d={ICONS.user} size={14} />
+              <span style={{ fontSize: 12, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.display_name || user?.email}</span>
+            </button>
+            {userMenuOpen && (
+              <div style={{
+                position: 'absolute', right: 0, top: '100%', marginTop: 4,
+                background: 'var(--bg-2)', border: '1px solid var(--border-md)',
+                borderRadius: 8, padding: 6, minWidth: 160, zIndex: 100,
+                boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+              }}>
+                <div style={{ padding: '6px 10px', fontSize: 11, color: 'var(--text-3)', borderBottom: '1px solid var(--border)', marginBottom: 4 }}>
+                  {user?.email}<br />
+                  <span style={{ color: 'var(--amber)', fontSize: 10 }}>{user?.role}</span>
+                </div>
+                <button className="btn btn-ghost btn-sm" style={{ width: '100%', justifyContent: 'flex-start', border: 'none' }}
+                  onClick={() => { logout(); setUserMenuOpen(false); }}>
+                  <Icon d={ICONS.logout} size={13} /> Sign out
+                </button>
+                <div style={{ padding: '4px 10px 2px', fontSize: 10, color: 'var(--text-3)' }}>v{VERSION}</div>
+              </div>
             )}
           </div>
-          <ul style={{ listStyle: 'none' }}>
-            {folders.map(f => (
-              <FolderNode key={f.id} folder={f} activeFolder={activeFolder}
-                onSelect={handleFolderSelect} onCreateChild={setCreateModal}
-                isAdmin={isAdmin} depth={0} />
-            ))}
-          </ul>
         </div>
+      </header>
 
-        {/* Campaign list */}
-        {campaigns.length > 0 && (
-          <div style={{ padding: '0 10px 10px', borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6, paddingLeft: 6 }}>
-              Campaigns
-            </div>
-            {campaigns.slice(0, 8).map(c => (
-              <NavLink key={c.id} to={`/campaigns/${c.id}`} style={({ isActive }) => ({
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '4px 6px', borderRadius: 4, marginBottom: 1, fontSize: 12,
-                color: isActive ? 'var(--text-0)' : 'var(--text-2)',
-                background: isActive ? 'var(--bg-3)' : 'transparent',
-                textDecoration: 'none', overflow: 'hidden',
-              })}>
-                <Icon d={ICONS.campaign} size={11} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{c.name}</span>
-              </NavLink>
-            ))}
-          </div>
-        )}
-
-        {/* Footer */}
-        <div style={{ padding: '10px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
-          <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 6, paddingLeft: 4, letterSpacing: '0.06em' }}>
-            v{VERSION}
-          </div>
-          <button className="btn btn-ghost" style={{ width: '100%', justifyContent: 'flex-start', gap: 8, fontSize: 13 }}
-            onClick={logout}>
-            <Icon d={ICONS.logout} size={14} />
-            Sign out
-          </button>
-        </div>
-      </aside>
-
-      {/* Main */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <header style={{
-          height: 'var(--topbar-h)', minHeight: 'var(--topbar-h)',
-          background: 'var(--bg-1)', borderBottom: '1px solid var(--border)',
-          display: 'flex', alignItems: 'center', padding: '0 20px', gap: 12, flexShrink: 0,
-        }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => setSidebarOpen(o => !o)}>
-            <Icon d={ICONS.menu} size={16} />
-          </button>
-        </header>
-        <main style={{ flex: 1, overflow: 'auto' }}>
-          <Outlet />
-        </main>
-      </div>
-
-      {/* Create folder modal */}
-      {createModal !== null && (
-        <CreateFolderModal
-          parentPath={createModal}
-          onClose={() => setCreateModal(null)}
-          onCreated={loadFolders}
-        />
-      )}
+      {/* ── Page content ── */}
+      <main style={{ flex: 1, overflow: 'auto' }}>
+        <Outlet />
+      </main>
     </div>
   );
 }

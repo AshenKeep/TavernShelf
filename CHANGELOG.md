@@ -5,6 +5,53 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.3] — 2026-04-11
+
+### Added — Navigation, File Explorer, ISBN, Upload flow
+
+**New navigation:**
+- Persistent top bar replaces sidebar folder tree: Logo · System dropdown · Library/Files tabs · Search · Sync · Campaigns · Uploads · Admin · User menu
+- System dropdown scopes the library view to a specific game system
+- Campaigns button always visible regardless of system context
+
+**Library page redesign:**
+- Overview shows content type cards per system with cover strip previews
+- Clicking a card drills into that content type's book grid
+- Adventure Module tab shows module folders as cards
+- Content type tabs (top 4 + More dropdown) for quick switching
+- Unsorted indicator when files have no system/content type
+- Breadcrumb + sort in drill-down view
+
+**Search page (`/search`):**
+- Dedicated full-text search page opened via 🔍 button in top bar
+- Filters: system, content type, file format, sort
+- Auto-focuses search input on open
+
+**File Explorer page (`/files`):**
+- Full folder tree with expand/collapse
+- Click folder name → browse its books in library
+- Admins: hover folder for controls (+ subfolder, ⚔ toggle module, ✕ remove from DB)
+- Create folder modal with "Mark as Adventure Module" checkbox
+- Users: browse-only, no controls shown
+- `DELETE /api/admin/folders/:id` — removes from DB only, does not delete files on disk
+
+**Upload form reordered:**
+- Step 1: Game System → Content Type → Module Name (shown only when Adventure Module selected)
+- Step 2: Target folder (auto-suggested based on system/type/module name, overridable)
+- Step 3: Title, authors, description, tags
+
+**ISBN metadata field:**
+- Added `isbn` column to `library_items` (auto-migrated)
+- Auto-populated from OpenLibrary/Google Books fetch results
+- Editable in MetadataEditor
+- Displayed on ItemPage
+
+**Bug fixes:**
+- Removed duplicate Organisation tab from Admin panel
+- Removed duplicate `PUT /api/library/folders/:id` route
+
+---
+
 ## [0.1.2] — 2026-04-09
 
 ### Added — Library Organisation

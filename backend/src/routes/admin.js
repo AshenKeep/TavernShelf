@@ -266,6 +266,19 @@ router.get('/logs/:filename', async (req, res) => {
 
 
 
+
+// DELETE /api/admin/folders/:id — remove folder from DB (not from disk)
+router.delete('/folders/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const db = await getDb();
+    const folder = await dbGet(db, 'SELECT * FROM folders WHERE id = $1', [req.params.id]);
+    if (!folder) return res.status(404).json({ error: 'Folder not found' });
+    await dbRun(db, 'DELETE FROM folders WHERE id = $1', [req.params.id]);
+    logger.event('Admin', 'Folder removed from DB', { path: folder.path, by: req.user.email });
+    res.json({ message: 'Folder removed' });
+  } catch (e) { logger.error('Admin', 'Folder delete error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
+});
+
 // ── General settings ──────────────────────────────────────
 
 router.get('/settings', requireAuth, requireRole('admin'), async (req, res) => {

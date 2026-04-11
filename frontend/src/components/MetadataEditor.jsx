@@ -57,6 +57,7 @@ export default function MetadataEditor({ item, onClose, onSave }) {
     system:      item.system      || '',
     contentType: item.content_type|| '',
     tags:        (item.tags || []).join(', '),
+    isbn:        item.isbn || '',
   });
 
   const [lockedFields, setLockedFields] = useState(item.locked_fields || []);
@@ -152,6 +153,7 @@ export default function MetadataEditor({ item, onClose, onSave }) {
         contentType: form.contentType,
         tags:        form.tags.split(',').map(t=>t.trim()).filter(Boolean),
         coverUrl:    coverUrl || null,
+        isbn:        form.isbn || null,
         source:      'manual',
       });
       if (updated.needsModuleName) {
@@ -385,6 +387,13 @@ export default function MetadataEditor({ item, onClose, onSave }) {
               </div>
               <input type="number" value={form.year} min="1970" max="2030" onChange={f('year')}
                 style={{ borderColor: status.year==='differs' ? 'rgba(200,136,42,0.4)' : '' }}/>
+            </div>
+            {/* ISBN */}
+            <div style={{ gridColumn:'1/-1' }}>
+              <div style={{ display:'flex', alignItems:'center', marginBottom:5 }}>
+                <label style={{ fontSize:12, color:'var(--text-2)', flex:1 }}>ISBN</label>
+              </div>
+              <input value={form.isbn} onChange={f('isbn')} placeholder="ISBN-10 or ISBN-13" style={{ fontFamily:'monospace' }}/>
             </div>
           </div>
 

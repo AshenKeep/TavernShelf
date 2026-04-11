@@ -276,19 +276,7 @@ router.put('/organiser-settings', requireAuth, requireRole('admin'), async (req,
   } catch (e) { res.status(500).json({ error: 'Server error' }); }
 });
 
-// PUT /api/library/folders/:id — update folder flags
-router.put('/folders/:id', requireAuth, requireRole('admin'), async (req, res) => {
-  try {
-    const { is_module, managed } = req.body;
-    const db = await getDb();
-    const folder = await dbGet(db, 'SELECT id FROM folders WHERE id = $1', [req.params.id]);
-    if (!folder) return res.status(404).json({ error: 'Folder not found' });
-    if (is_module !== undefined) await dbRun(db, 'UPDATE folders SET is_module = $1 WHERE id = $2', [!!is_module, req.params.id]);
-    if (managed !== undefined) await dbRun(db, 'UPDATE folders SET managed = $1 WHERE id = $2', [managed || null, req.params.id]);
-    const updated = await dbGet(db, 'SELECT * FROM folders WHERE id = $1', [req.params.id]);
-    res.json(updated);
-  } catch (e) { console.error('[Library] Folder update:', e.message); res.status(500).json({ error: 'Server error' }); }
-});
+
 
 
 // GET /api/library/misplaced — get items not in their expected location
@@ -329,6 +317,68 @@ router.put('/folders/:id', requireAuth, requireRole('admin'), async (req, res) =
     const updated = await dbGet(db, 'SELECT * FROM folders WHERE id = $1', [folder.id]);
     res.json(updated);
   } catch (e) { console.error('[Library] Folder update:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+
+// GET /api/library/overview — per-system summary: content types with counts and cover samples
+router.get('/overview', requireAuth, async (req, res) => {
+  try {
+    const db = await getDb();
+    const { system } = req.query;
+
+    // Get all systems or just one
+    const systemFilter = system ? `WHERE system = $1` : `WHERE system != '' AND system IS NOT NULL`;
+    const params = system ? [system] : [];
+
+    const rows = await dbAll(db, `
+      SELECT
+        system,
+        content_type,
+        COUNT(*) as item_count,
+        MIN(cover_path) FILTER (WHERE cover_path IS NOT NULL AND cover_path != '') as sample_cover,
+        array_agg(cover_path ORDER BY updated_at DESC) FILTER (WHERE cover_path IS NOT NULL AND cover_path != '') as covers
+      FROM library_items
+      ${systemFilter}
+        AND content_type != '' AND content_type IS NOT NULL
+      GROUP BY system, content_type
+      ORDER BY system, item_count DESC
+    `, params);
+
+    // Also get unsorted count
+    const unsorted = await dbGet(db, `
+      SELECT COUNT(*) as n FROM library_items
+      WHERE (system IS NULL OR system = '' OR content_type IS NULL OR content_type = '')
+    `);
+
+    // Get module folders
+    const moduleFolders = await dbAll(db, `
+      SELECT f.*, COUNT(li.id) as item_count
+      FROM folders f
+      LEFT JOIN library_items li ON li.path LIKE f.path || '/%'
+      WHERE f.is_module = TRUE
+      ${system ? "AND f.path LIKE $1 || '/%'" : ''}
+      GROUP BY f.id
+      ORDER BY f.name
+    `, system ? [system] : []);
+
+    // Group by system
+    const systems = {};
+    for (const row of rows) {
+      if (!systems[row.system]) systems[row.system] = { system: row.system, contentTypes: [] };
+      systems[row.system].contentTypes.push({
+        content_type: row.content_type,
+        item_count:   parseInt(row.item_count),
+        covers:       (row.covers || []).slice(0, 4),
+        sample_cover: row.sample_cover,
+      });
+    }
+
+    res.json({
+      systems:       Object.values(systems),
+      unsortedCount: parseInt(unsorted?.n || 0),
+      moduleFolders: moduleFolders.map(f => ({ ...f, item_count: parseInt(f.item_count || 0) })),
+    });
+  } catch (e) { console.error('[Library] Overview:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
 // POST /api/library/scan

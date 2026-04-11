@@ -6,6 +6,7 @@ const TTRPG_SYSTEMS = ['D&D 5e','D&D 5.5e','D&D 3.5e','D&D 4e','OSE','Pathfinder
 const CONTENT_TYPES = ['Core Rulebook','Supplement','Adventure Module','Sourcebook','Bestiary','Campaign Setting','Magic Items','Pregen Characters','Battle Maps','Tokens','Encounter','Quick Reference','System Reference','Other'];
 
 function formatSize(b) {
+  if (!b) return '—';
   if (b < 1024*1024) return `${(b/1024).toFixed(0)} KB`;
   return `${(b/1024/1024).toFixed(1)} MB`;
 }
@@ -35,10 +36,23 @@ export default function UploadsPage() {
   const [success, setSuccess]     = useState('');
 
   const [form, setForm] = useState({
-    title: '', authors: '', description: '', system: '',
-    contentType: '', tags: '', targetFolder: '',
+    system: '', contentType: '', moduleName: '',
+    targetFolder: '', title: '', authors: '',
+    description: '', tags: '',
   });
   const [file, setFile] = useState(null);
+
+  const isModule = form.contentType === 'Adventure Module';
+
+  // Auto-suggest target folder based on system + contentType + moduleName
+  useEffect(() => {
+    if (!form.system || !form.contentType) return;
+    let suggested = `${form.system}/${form.contentType}`;
+    if (isModule && form.moduleName.trim()) {
+      suggested = `${form.system}/Adventure Module/${form.moduleName.trim()}`;
+    }
+    setForm(f => ({ ...f, targetFolder: suggested }));
+  }, [form.system, form.contentType, form.moduleName]);
 
   useEffect(() => {
     get('/library/folders').then(f => {
@@ -65,18 +79,19 @@ export default function UploadsPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!file) return setError('Please select a file');
-    if (!form.targetFolder) return setError('Please select a target folder');
+    if (!form.targetFolder) return setError('Target folder could not be determined — please select system and content type');
 
     setError(''); setSuccess(''); setUploading(true); setProgress(0);
 
     const fd = new FormData();
     fd.append('file', file);
-    Object.entries(form).forEach(([k, v]) => {
-      if (k === 'authors') fd.append('authors', JSON.stringify(v.split(',').map(a => a.trim()).filter(Boolean)));
-      else if (k === 'tags') fd.append('tags', JSON.stringify(v.split(',').map(t => t.trim()).filter(Boolean)));
-      else if (k === 'contentType') fd.append('contentType', v);
-      else fd.append(k, v);
-    });
+    fd.append('title', form.title);
+    fd.append('authors', JSON.stringify(form.authors.split(',').map(a => a.trim()).filter(Boolean)));
+    fd.append('description', form.description);
+    fd.append('system', form.system);
+    fd.append('contentType', form.contentType);
+    fd.append('tags', JSON.stringify(form.tags.split(',').map(t => t.trim()).filter(Boolean)));
+    fd.append('targetFolder', form.targetFolder);
 
     try {
       const xhr = new XMLHttpRequest();
@@ -91,7 +106,7 @@ export default function UploadsPage() {
 
       setSuccess('File submitted for admin approval!');
       setFile(null); fileRef.current.value = '';
-      setForm({ title: '', authors: '', description: '', system: '', contentType: '', tags: '', targetFolder: form.targetFolder });
+      setForm(f => ({ ...f, title: '', authors: '', description: '', tags: '', moduleName: '' }));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -99,14 +114,15 @@ export default function UploadsPage() {
     }
   };
 
+  const f = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+
   return (
     <div style={{ padding: 24, maxWidth: 800, margin: '0 auto' }}>
       <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--text-0)', marginBottom: 20 }}>
         Uploads
       </h1>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 0 }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid var(--border)' }}>
         {[['submit','Submit File'], ['queue','My Queue']].map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)} style={{
             padding: '8px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer', border: 'none',
@@ -120,11 +136,12 @@ export default function UploadsPage() {
 
       {tab === 'submit' && (
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
           {/* File drop zone */}
           <div style={{
             border: `2px dashed ${file ? 'var(--amber)' : 'var(--border)'}`,
             borderRadius: 'var(--radius-lg)', padding: 32, textAlign: 'center',
-            background: file ? 'rgba(139,107,200,0.06)' : 'var(--bg-2)',
+            background: file ? 'rgba(200,136,42,0.06)' : 'var(--bg-2)',
             transition: 'all 0.15s', cursor: 'pointer',
           }} onClick={() => fileRef.current?.click()}>
             <input ref={fileRef} type="file" style={{ display: 'none' }}
@@ -140,52 +157,104 @@ export default function UploadsPage() {
               <div>
                 <div style={{ fontSize: 28, marginBottom: 8 }}>📤</div>
                 <div style={{ color: 'var(--text-2)', fontSize: 14 }}>Click to select a file</div>
-                <div style={{ color: 'var(--text-3)', fontSize: 12, marginTop: 4 }}>PDF, CBZ, CBR, JPG, PNG, GIF, WEBP — max 500 MB</div>
+                <div style={{ color: 'var(--text-3)', fontSize: 12, marginTop: 4 }}>PDF, CBZ, CBR, JPG, PNG — max 500 MB</div>
               </div>
             )}
           </div>
 
-          <div>
-            <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Target Folder *</label>
-            <select value={form.targetFolder} required onChange={e => setForm(f => ({ ...f, targetFolder: e.target.value }))}>
+          {/* Step 1: System + Content Type */}
+          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12 }}>
+              1 — Classify
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Game System *</label>
+                <select value={form.system} onChange={f('system')} required>
+                  <option value="">— Select system —</option>
+                  {TTRPG_SYSTEMS.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Content Type *</label>
+                <select value={form.contentType} onChange={f('contentType')} required>
+                  <option value="">— Select type —</option>
+                  {CONTENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* Module name — shown only for Adventure Module */}
+            {isModule && (
+              <div style={{ marginTop: 14 }}>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>
+                  Adventure Module Name *
+                  <span style={{ color: 'var(--text-3)', fontWeight: 400, marginLeft: 6 }}>This becomes the folder name</span>
+                </label>
+                <input
+                  value={form.moduleName}
+                  onChange={f('moduleName')}
+                  placeholder="e.g. Curse of Strahd"
+                  required={isModule}
+                />
+                {form.moduleName && (
+                  <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4, fontFamily: 'monospace' }}>
+                    → {form.system}/Adventure Module/{form.moduleName}/
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Step 2: Target folder (auto-suggested, overridable) */}
+          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12 }}>
+              2 — Destination
+            </div>
+            <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>
+              Target Folder *
+              {form.system && form.contentType && (
+                <span style={{ color: 'var(--green-hi)', marginLeft: 8, fontWeight: 400 }}>✓ auto-suggested</span>
+              )}
+            </label>
+            <select value={form.targetFolder} required onChange={f('targetFolder')}>
               <option value="">— Select a folder —</option>
+              {form.system && form.contentType && (
+                <option value={isModule && form.moduleName
+                  ? `${form.system}/Adventure Module/${form.moduleName}`
+                  : `${form.system}/${form.contentType}`}>
+                  {isModule && form.moduleName
+                    ? `${form.system}/Adventure Module/${form.moduleName} (suggested)`
+                    : `${form.system}/${form.contentType} (suggested)`}
+                </option>
+              )}
               {folders.map(f => <option key={f.id} value={f.path}>{'  '.repeat(f.depth)}{f.name}</option>)}
             </select>
           </div>
 
-          <div>
-            <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Title *</label>
-            <input value={form.title} required onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-            <div>
-              <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Game System</label>
-              <select value={form.system} onChange={e => setForm(f => ({ ...f, system: e.target.value }))}>
-                <option value="">— None —</option>
-                {TTRPG_SYSTEMS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+          {/* Step 3: Metadata */}
+          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12 }}>
+              3 — Details
             </div>
-            <div>
-              <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Content Type</label>
-              <select value={form.contentType} onChange={e => setForm(f => ({ ...f, contentType: e.target.value }))}>
-                <option value="">— None —</option>
-                {CONTENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Title *</label>
+                <input value={form.title} required onChange={f('title')} placeholder="Book or module title" />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Authors <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(comma-separated)</span></label>
+                <input value={form.authors} onChange={f('authors')} placeholder="Gary Gygax, Dave Arneson" />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Description</label>
+                <textarea value={form.description} rows={3} style={{ resize: 'vertical' }} onChange={f('description')} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Tags <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(comma-separated)</span></label>
+                <input value={form.tags} onChange={f('tags')} placeholder="dungeon, one-shot, horror" />
+              </div>
             </div>
-          </div>
-
-          <div>
-            <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Authors (comma-separated)</label>
-            <input value={form.authors} onChange={e => setForm(f => ({ ...f, authors: e.target.value }))} placeholder="Gary Gygax, Dave Arneson" />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Description</label>
-            <textarea value={form.description} rows={3} style={{ resize: 'vertical' }} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Tags (comma-separated)</label>
-            <input value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} placeholder="dungeon, one-shot, horror" />
           </div>
 
           {error   && <div style={{ background: 'rgba(168,50,50,0.12)', border: '1px solid rgba(168,50,50,0.3)', borderRadius: 8, padding: '10px 14px', color: 'var(--red-hi)', fontSize: 13 }}>{error}</div>}
@@ -213,7 +282,6 @@ export default function UploadsPage() {
               </button>
             ))}
           </div>
-
           {queue.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-3)' }}>No {qStatus} submissions</div>
           ) : (

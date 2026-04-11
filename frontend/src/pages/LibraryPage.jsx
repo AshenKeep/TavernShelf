@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useApi } from '../hooks/useApi.js';
 import BookCard from '../components/BookCard.jsx';
@@ -9,169 +9,387 @@ const Icon = ({ d, size = 16 }) => (
   </svg>
 );
 
-const SEARCH_ICON = 'M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z';
-const FILTER_ICON = 'M22 3H2l8 9.46V19l4 2v-8.54L22 3z';
-const GRID_ICON   = 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z';
+const SORT_ICON = 'M3 6h18M7 12h10M11 18h2';
+
+// Content type card shown on the overview
+function ContentTypeCard({ ct, system, onClick }) {
+  const covers = (ct.covers || []).slice(0, 4);
+  return (
+    <div onClick={onClick} style={{
+      background: 'var(--bg-2)', border: '1px solid var(--border)',
+      borderRadius: 'var(--radius-lg)', overflow: 'hidden', cursor: 'pointer',
+      transition: 'transform 0.15s, border-color 0.15s, box-shadow 0.15s',
+    }}
+      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.borderColor = 'var(--border-md)'; e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.4)'; }}
+      onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = ''; }}
+    >
+      {/* Cover strip */}
+      <div style={{ display: 'flex', height: 90, background: 'var(--bg-3)', overflow: 'hidden' }}>
+        {covers.length > 0 ? covers.map((c, i) => (
+          <img key={i} src={c} alt="" style={{ flex: 1, objectFit: 'cover', borderRight: i < covers.length - 1 ? '1px solid var(--bg-0)' : 'none' }} />
+        )) : (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, color: 'var(--text-3)' }}>⚔</div>
+        )}
+      </div>
+      {/* Info */}
+      <div style={{ padding: '12px 14px' }}>
+        <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-0)', marginBottom: 2 }}>{ct.content_type}</div>
+        <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{ct.item_count} item{ct.item_count !== 1 ? 's' : ''}</div>
+      </div>
+    </div>
+  );
+}
+
+// Module folder card
+function ModuleCard({ folder, onClick }) {
+  return (
+    <div onClick={onClick} style={{
+      background: 'var(--bg-2)', border: '1px solid rgba(200,136,42,0.25)',
+      borderRadius: 'var(--radius-lg)', padding: '14px 16px', cursor: 'pointer',
+      transition: 'all 0.15s',
+    }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--amber)'; e.currentTarget.style.background = 'var(--bg-3)'; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(200,136,42,0.25)'; e.currentTarget.style.background = 'var(--bg-2)'; }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+        <span style={{ fontSize: 16 }}>⚔</span>
+        <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-0)' }}>{folder.name}</span>
+        <span style={{ marginLeft: 'auto', fontSize: 10, background: 'rgba(200,136,42,0.15)', color: 'var(--amber)', padding: '1px 6px', borderRadius: 99 }}>Module</span>
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{folder.item_count || 0} file{(folder.item_count || 0) !== 1 ? 's' : ''}</div>
+    </div>
+  );
+}
 
 export default function LibraryPage() {
   const { get } = useApi();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [items, setItems]     = useState([]);
-  const [total, setTotal]     = useState(0);
-  const [pages, setPages]     = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({ systems: [], contentTypes: [], fileTypes: [] });
-  const [stats, setStats]     = useState(null);
 
-  const q            = searchParams.get('q') || '';
+  // URL params
   const system       = searchParams.get('system') || '';
   const content_type = searchParams.get('content_type') || '';
-  const file_type    = searchParams.get('file_type') || '';
   const folder       = searchParams.get('folder') || '';
   const page         = parseInt(searchParams.get('page') || '1');
   const sort         = searchParams.get('sort') || 'title';
 
-  const searchRef   = useRef(null);
-  const debounceRef = useRef(null);
+  // Overview data
+  const [overview, setOverview]   = useState(null);
+  const [ovLoading, setOvLoading] = useState(true);
+
+  // Grid data (when drilled into content type)
+  const [items, setItems]         = useState([]);
+  const [total, setTotal]         = useState(0);
+  const [pages, setPages]         = useState(1);
+  const [gridLoading, setGridLoading] = useState(false);
+
+  // Active tab: 'overview' | content_type string | 'modules' | 'all'
+  const activeTab = content_type || folder || 'overview';
 
   const updateParam = (key, val) => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
       if (val) next.set(key, val); else next.delete(key);
       next.delete('page');
+      // Clearing content_type or folder goes back to overview
       return next;
     });
   };
 
+  // Load overview
   useEffect(() => {
-    get('/library/filters').then(setFilters).catch(() => {});
-    get('/library/stats').then(setStats).catch(() => {});
-  }, []);
+    setOvLoading(true);
+    const params = system ? { system } : {};
+    get('/library/overview', params)
+      .then(setOverview)
+      .catch(() => {})
+      .finally(() => setOvLoading(false));
+  }, [system]);
 
+  // Load grid when drilled in
   useEffect(() => {
-    setLoading(true);
+    if (activeTab === 'overview') return;
+    setGridLoading(true);
     const params = { page, sort };
-    if (q)            params.q            = q;
     if (system)       params.system       = system;
     if (content_type) params.content_type = content_type;
-    if (file_type)    params.file_type    = file_type;
     if (folder)       params.folder       = folder;
 
     get('/library/items', params)
       .then(data => { setItems(data.items); setTotal(data.total); setPages(data.pages); })
       .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [q, system, content_type, file_type, folder, page, sort]);
+      .finally(() => setGridLoading(false));
+  }, [system, content_type, folder, page, sort]);
 
-  const handleSearch = (val) => {
-    clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => updateParam('q', val), 300);
-  };
+  const drillInto = (ct) => updateParam('content_type', ct);
+  const drillIntoFolder = (path) => { updateParam('folder', path); updateParam('content_type', ''); };
+  const backToOverview = () => { updateParam('content_type', ''); updateParam('folder', ''); };
+
+  // Tabs from overview content types
+  const hasModules = (overview?.moduleFolders?.length > 0) ||
+    (overview?.systems?.flatMap(s => s.contentTypes).some(ct => ct.content_type === 'Adventure Module'));
+
+  const contentTypeOrder = ['Core Rulebook', 'Supplement', 'Sourcebook', 'Bestiary', 'Campaign Setting', 'Magic Items'];
+
+  const allContentTypes = system
+    ? (overview?.systems?.find(s => s.system === system)?.contentTypes || [])
+    : (overview?.systems?.flatMap(s => s.contentTypes.map(ct => ({ ...ct, system: s.system }))) || []);
+
+  // Deduplicate and sort content types for tabs
+  const uniqueTypes = [...new Map(allContentTypes.map(ct => [ct.content_type, ct])).values()]
+    .sort((a, b) => {
+      const ai = contentTypeOrder.indexOf(a.content_type);
+      const bi = contentTypeOrder.indexOf(b.content_type);
+      if (ai !== -1 && bi !== -1) return ai - bi;
+      if (ai !== -1) return -1;
+      if (bi !== -1) return 1;
+      return b.item_count - a.item_count;
+    });
+
+  const nonModuleTypes = uniqueTypes.filter(ct => ct.content_type !== 'Adventure Module');
+  const showAllTab = nonModuleTypes.length > 4;
+  const tabTypes = nonModuleTypes.slice(0, 4);
 
   return (
-    <div style={{ padding: 24 }}>
-      {/* Stats bar */}
-      {stats && (
-        <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
-          {[
-            { label: 'Total Items', value: stats.total_items },
-            { label: 'PDFs',   value: stats.pdf_count },
-            { label: 'Comics', value: stats.cbz_count },
-            { label: 'Images', value: stats.image_count },
-            { label: 'Systems', value: stats.total_systems },
-          ].map(s => (
-            <div key={s.label} style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 16px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <span style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.label}</span>
-              <span style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-0)', fontFamily: 'var(--font-display)' }}>{s.value ?? '—'}</span>
-            </div>
-          ))}
-        </div>
-      )}
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
 
-      {/* Search + filters */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ position: 'relative', flex: '1 1 240px', minWidth: 200 }}>
-          <Icon d={SEARCH_ICON} size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', pointerEvents: 'none' }} />
-          <input
-            ref={searchRef}
-            placeholder="Search titles, authors, descriptions…"
-            defaultValue={q}
-            onChange={e => handleSearch(e.target.value)}
-            style={{ paddingLeft: 34 }}
-          />
-        </div>
+      {/* Sub-navigation tabs */}
+      <div style={{
+        background: 'var(--bg-1)', borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'stretch', padding: '0 24px', gap: 2, flexShrink: 0,
+        overflowX: 'auto',
+      }}>
+        {/* Overview tab */}
+        <TabButton active={activeTab === 'overview'} onClick={backToOverview}>Overview</TabButton>
 
-        <select value={system} onChange={e => updateParam('system', e.target.value)} style={{ width: 'auto', minWidth: 130 }}>
-          <option value="">All Systems</option>
-          {filters.systems.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
+        {/* Content type tabs (top 4) */}
+        {tabTypes.map(ct => (
+          <TabButton key={ct.content_type}
+            active={activeTab === ct.content_type}
+            onClick={() => drillInto(ct.content_type)}>
+            {ct.content_type}
+            <span style={{ fontSize: 10, opacity: 0.6, marginLeft: 4 }}>{ct.item_count}</span>
+          </TabButton>
+        ))}
 
-        <select value={content_type} onChange={e => updateParam('content_type', e.target.value)} style={{ width: 'auto', minWidth: 130 }}>
-          <option value="">All Types</option>
-          {filters.contentTypes.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
+        {/* More dropdown if >4 types */}
+        {showAllTab && (
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'stretch' }}>
+            <MoreTab
+              types={nonModuleTypes.slice(4)}
+              activeTab={activeTab}
+              onSelect={drillInto}
+            />
+          </div>
+        )}
 
-        <select value={file_type} onChange={e => updateParam('file_type', e.target.value)} style={{ width: 'auto', minWidth: 100 }}>
-          <option value="">All Formats</option>
-          {filters.fileTypes.map(t => <option key={t} value={t}>{t.toUpperCase()}</option>)}
-        </select>
+        {/* Modules tab */}
+        {hasModules && (
+          <TabButton
+            active={activeTab === 'Adventure Module' || (folder && overview?.moduleFolders?.some(f => f.path === folder))}
+            onClick={() => drillInto('Adventure Module')}>
+            ⚔ Modules
+            <span style={{ fontSize: 10, opacity: 0.6, marginLeft: 4 }}>
+              {uniqueTypes.find(ct => ct.content_type === 'Adventure Module')?.item_count || 0}
+            </span>
+          </TabButton>
+        )}
 
-        <select value={sort} onChange={e => updateParam('sort', e.target.value)} style={{ width: 'auto', minWidth: 120 }}>
-          <option value="title">A → Z</option>
-          <option value="created">Recently Added</option>
-          <option value="size">Largest First</option>
-          <option value="year">By Year</option>
-        </select>
+        {/* Unsorted indicator */}
+        {overview?.unsortedCount > 0 && (
+          <TabButton active={false} onClick={() => { updateParam('system', ''); updateParam('content_type', 'unsorted'); }}
+            style={{ color: 'var(--amber-hi)' }}>
+            ⚠ Unsorted ({overview.unsortedCount})
+          </TabButton>
+        )}
       </div>
 
-      {/* Active filters */}
-      {(q || system || content_type || file_type || folder) && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{total} result{total !== 1 ? 's' : ''}</span>
-          {[
-            q            && { label: `"${q}"`,       key: 'q' },
-            system       && { label: system,          key: 'system' },
-            content_type && { label: content_type,    key: 'content_type' },
-            file_type    && { label: file_type.toUpperCase(), key: 'file_type' },
-            folder       && { label: `📁 ${folder}`, key: 'folder' },
-          ].filter(Boolean).map(f => (
-            <span key={f.key} className="badge badge-amber" style={{ cursor: 'pointer', gap: 4 }}
-              onClick={() => updateParam(f.key, '')}>
-              {f.label} ×
-            </span>
-          ))}
-          <button className="btn btn-ghost btn-sm" onClick={() => setSearchParams({})}>Clear all</button>
-        </div>
-      )}
+      {/* Content area */}
+      <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
 
-      {/* Grid */}
-      {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}>
-          <div className="spinner" style={{ width: 32, height: 32 }} />
-        </div>
-      ) : items.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 80, color: 'var(--text-3)' }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>📚</div>
-          <div style={{ fontSize: 18, fontFamily: 'var(--font-display)', color: 'var(--text-2)', marginBottom: 8 }}>No items found</div>
-          <div style={{ fontSize: 14 }}>{q ? 'Try a different search' : 'The library is empty — add files to your library folder'}</div>
-        </div>
-      ) : (
+        {/* System title */}
+        {system && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--text-0)' }}>{system}</h1>
+            <button className="btn btn-ghost btn-sm" onClick={() => updateParam('system', '')}>✕ All Systems</button>
+          </div>
+        )}
+
+        {/* Overview grid */}
+        {activeTab === 'overview' && (
+          <>
+            {ovLoading ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}>
+                <div className="spinner" style={{ width: 36, height: 36 }} />
+              </div>
+            ) : overview?.systems?.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 80, color: 'var(--text-3)' }}>
+                <div style={{ fontSize: 48, marginBottom: 16 }}>📚</div>
+                <div style={{ fontSize: 18, fontFamily: 'var(--font-display)', color: 'var(--text-2)', marginBottom: 8 }}>Library is empty</div>
+                <div>Add files to your library folder and trigger a scan</div>
+              </div>
+            ) : (
+              <>
+                {/* Per-system sections when viewing all */}
+                {!system && overview?.systems?.map(sys => (
+                  <div key={sys.system} style={{ marginBottom: 36 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                      <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, color: 'var(--text-0)' }}>{sys.system}</h2>
+                      <button className="btn btn-ghost btn-sm" onClick={() => updateParam('system', sys.system)} style={{ fontSize: 11 }}>
+                        Browse →
+                      </button>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
+                      {sys.contentTypes.filter(ct => ct.content_type !== 'Adventure Module').slice(0, 6).map(ct => (
+                        <ContentTypeCard key={ct.content_type} ct={ct} system={sys.system}
+                          onClick={() => { updateParam('system', sys.system); drillInto(ct.content_type); }} />
+                      ))}
+                      {sys.contentTypes.some(ct => ct.content_type === 'Adventure Module') && (
+                        <ContentTypeCard
+                          ct={{ content_type: 'Adventure Module', item_count: sys.contentTypes.find(ct => ct.content_type === 'Adventure Module')?.item_count || 0, covers: [] }}
+                          system={sys.system}
+                          onClick={() => { updateParam('system', sys.system); drillInto('Adventure Module'); }} />
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Single system view */}
+                {system && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
+                    {allContentTypes.filter(ct => ct.content_type !== 'Adventure Module').map(ct => (
+                      <ContentTypeCard key={ct.content_type} ct={ct} system={system}
+                        onClick={() => drillInto(ct.content_type)} />
+                    ))}
+                    {hasModules && (
+                      <div style={{ display: 'grid', gridColumn: '1/-1', marginTop: 12 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-2)', marginBottom: 10, fontFamily: 'var(--font-display)' }}>
+                          Adventure Modules
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+                          {overview.moduleFolders.map(f => (
+                            <ModuleCard key={f.id} folder={f} onClick={() => drillIntoFolder(f.path)} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+
+        {/* Drilled-in grid view */}
+        {activeTab !== 'overview' && (
+          <>
+            {/* Breadcrumb + sort */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+              <button className="btn btn-ghost btn-sm" onClick={backToOverview}>← Overview</button>
+              {system && <span style={{ fontSize: 13, color: 'var(--text-3)' }}>{system}</span>}
+              {system && content_type && <span style={{ color: 'var(--text-3)' }}>›</span>}
+              {content_type && <span style={{ fontSize: 13, color: 'var(--text-1)' }}>{content_type}</span>}
+              {folder && <span style={{ fontSize: 13, color: 'var(--text-1)', fontFamily: 'monospace' }}>{folder.split('/').pop()}</span>}
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-3)' }}>{total} item{total !== 1 ? 's' : ''}</span>
+              <select value={sort} onChange={e => updateParam('sort', e.target.value)} style={{ width: 'auto', fontSize: 12 }}>
+                <option value="title">A → Z</option>
+                <option value="created">Recently Added</option>
+                <option value="size">Largest First</option>
+                <option value="year">By Year</option>
+              </select>
+            </div>
+
+            {/* Module sub-folders if Adventure Module tab */}
+            {content_type === 'Adventure Module' && overview?.moduleFolders?.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-2)', marginBottom: 10, fontFamily: 'var(--font-display)' }}>Module Folders</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10, marginBottom: 20 }}>
+                  {overview.moduleFolders.map(f => (
+                    <ModuleCard key={f.id} folder={f} onClick={() => drillIntoFolder(f.path)} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {gridLoading ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
+                <div className="spinner" style={{ width: 32, height: 32 }} />
+              </div>
+            ) : items.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-3)' }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>📚</div>
+                <div style={{ fontSize: 16, color: 'var(--text-2)' }}>No items here</div>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 16 }}>
+                {items.map(item => <BookCard key={item.id} item={item} />)}
+              </div>
+            )}
+
+            {/* Pagination */}
+            {pages > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 32, paddingBottom: 24 }}>
+                {Array.from({ length: Math.min(pages, 10) }, (_, i) => i + 1).map(p => (
+                  <button key={p} className={`btn btn-sm ${p === page ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('page', p); return n; })}>
+                    {p}
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TabButton({ active, onClick, children, style = {} }) {
+  return (
+    <button onClick={onClick} style={{
+      background: 'none', border: 'none', padding: '0 14px', height: '100%',
+      fontSize: 13, fontWeight: 500, cursor: 'pointer',
+      color: active ? 'var(--text-0)' : 'var(--text-2)',
+      borderBottom: active ? '2px solid var(--amber)' : '2px solid transparent',
+      transition: 'all 0.15s', whiteSpace: 'nowrap', flexShrink: 0,
+      ...style,
+    }}>
+      {children}
+    </button>
+  );
+}
+
+function MoreTab({ types, activeTab, onSelect }) {
+  const [open, setOpen] = useState(false);
+  const hasActive = types.some(t => t.content_type === activeTab);
+
+  return (
+    <div style={{ position: 'relative', display: 'flex', alignItems: 'stretch' }}>
+      <button onClick={() => setOpen(o => !o)} style={{
+        background: 'none', border: 'none', padding: '0 12px', height: '100%',
+        fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap',
+        color: hasActive ? 'var(--text-0)' : 'var(--text-2)',
+        borderBottom: hasActive ? '2px solid var(--amber)' : '2px solid transparent',
+      }}>
+        More ▾
+      </button>
+      {open && (
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
-          gap: 16,
+          position: 'absolute', top: '100%', left: 0, zIndex: 100, marginTop: 4,
+          background: 'var(--bg-2)', border: '1px solid var(--border-md)', borderRadius: 8,
+          padding: 6, minWidth: 180, boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
         }}>
-          {items.map(item => <BookCard key={item.id} item={item} />)}
-        </div>
-      )}
-
-      {/* Pagination */}
-      {pages > 1 && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 32, paddingBottom: 24 }}>
-          {Array.from({ length: pages }, (_, i) => i + 1).map(p => (
-            <button key={p} className={`btn btn-sm ${p === page ? 'btn-primary' : 'btn-ghost'}`}
-              onClick={() => setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('page', p); return n; })}>
-              {p}
+          {types.map(t => (
+            <button key={t.content_type} onClick={() => { onSelect(t.content_type); setOpen(false); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                padding: '7px 12px', borderRadius: 4, background: 'none', border: 'none',
+                fontSize: 13, cursor: 'pointer', textAlign: 'left',
+                color: activeTab === t.content_type ? 'var(--amber-hi)' : 'var(--text-1)',
+                background: activeTab === t.content_type ? 'rgba(200,136,42,0.1)' : 'transparent',
+              }}>
+              {t.content_type}
+              <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)' }}>{t.item_count}</span>
             </button>
           ))}
         </div>

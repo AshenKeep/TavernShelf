@@ -79,6 +79,7 @@ async function migrate(db) {
       file_size       BIGINT NOT NULL DEFAULT 0,
       page_count      INTEGER,
       metadata_source TEXT DEFAULT 'filename',
+      isbn            TEXT DEFAULT '',
       locked_fields   TEXT DEFAULT '[]',
       created_at      BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
       updated_at      BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
@@ -165,6 +166,9 @@ async function migrate(db) {
   `);
   console.log('[DB] Schema ready');
 
+  // Add isbn column for existing installs
+  await db.exec(`ALTER TABLE library_items ADD COLUMN IF NOT EXISTS isbn TEXT DEFAULT ''`);
+
   // Add folder management columns for existing installs
   await db.exec(`ALTER TABLE folders ADD COLUMN IF NOT EXISTS is_module BOOLEAN NOT NULL DEFAULT FALSE`);
   await db.exec(`ALTER TABLE folders ADD COLUMN IF NOT EXISTS managed TEXT DEFAULT NULL`);
@@ -173,6 +177,9 @@ async function migrate(db) {
   await db.exec(`
     ALTER TABLE library_items ADD COLUMN IF NOT EXISTS locked_fields TEXT DEFAULT '[]'
   `);
+
+  // Add isbn column for existing installs
+  await db.exec(`ALTER TABLE library_items ADD COLUMN IF NOT EXISTS isbn TEXT DEFAULT ''`);
 
   // Add folder management columns for existing installs
   await db.exec(`ALTER TABLE folders ADD COLUMN IF NOT EXISTS is_module BOOLEAN NOT NULL DEFAULT FALSE`);

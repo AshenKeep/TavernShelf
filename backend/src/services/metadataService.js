@@ -234,9 +234,10 @@ export async function autoFetchMetadata(itemId, title, filePath) {
         year            = COALESCE($5, year),
         tags            = COALESCE($6, tags),
         cover_path      = COALESCE($7, cover_path),
-        metadata_source = $8,
-        updated_at      = $9
-      WHERE id = $10
+        isbn            = COALESCE($8, isbn),
+        metadata_source = $9,
+        updated_at      = $10
+      WHERE id = $11
     `, [
       skip('title',       best.title || null),
       skip('authors',     best.authors?.length ? JSON.stringify(best.authors) : null),
@@ -245,6 +246,7 @@ export async function autoFetchMetadata(itemId, title, filePath) {
       skip('year',        best.year || null),
       skip('tags',        best.tags?.length ? JSON.stringify(best.tags) : null),
       skip('cover',       coverPath || null),
+      best.isbn || null,
       best.source,
       now(),
       itemId,
@@ -275,9 +277,10 @@ export async function applyMetadata(itemId, metadata) {
       system          = COALESCE($7, system),
       content_type    = COALESCE($8, content_type),
       cover_path      = COALESCE($9, cover_path),
-      metadata_source = $10,
-      updated_at      = $11
-    WHERE id = $12
+      isbn            = COALESCE($10, isbn),
+      metadata_source = $11,
+      updated_at      = $12
+    WHERE id = $13
   `, [
     metadata.title || null,
     metadata.authors ? JSON.stringify(metadata.authors) : null,
@@ -288,6 +291,7 @@ export async function applyMetadata(itemId, metadata) {
     metadata.system || null,
     metadata.contentType || null,
     coverPath || null,
+    metadata.isbn || null,
     metadata.source || 'manual',
     now(),
     itemId,

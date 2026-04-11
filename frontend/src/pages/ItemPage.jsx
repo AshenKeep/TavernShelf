@@ -122,6 +122,7 @@ export default function ItemPage() {
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
             {[
               { label: 'Publisher',  value: item.publisher },
+              { label: 'ISBN',       value: item.isbn },
               { label: 'File Size',  value: formatSize(item.file_size) },
               { label: 'Pages',      value: item.page_count },
               { label: 'Added',      value: formatDate(item.created_at) },
