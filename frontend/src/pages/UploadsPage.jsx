@@ -45,14 +45,18 @@ export default function UploadsPage() {
   const isModule = form.contentType === 'Adventure Module';
 
   // Auto-suggest target folder based on system + contentType + moduleName
+  // Prefer an existing folder that matches, otherwise suggest creating a new one
   useEffect(() => {
     if (!form.system || !form.contentType) return;
-    let suggested = `${form.system}/${form.contentType}`;
-    if (isModule && form.moduleName.trim()) {
-      suggested = `${form.system}/Adventure Module/${form.moduleName.trim()}`;
-    }
-    setForm(f => ({ ...f, targetFolder: suggested }));
-  }, [form.system, form.contentType, form.moduleName]);
+    let suggested = isModule && form.moduleName.trim()
+      ? `${form.system}/Adventure Module/${form.moduleName.trim()}`
+      : `${form.system}/${form.contentType}`;
+
+    // Check if an existing folder path starts with our suggestion (case-insensitive)
+    const lower = suggested.toLowerCase();
+    const match = folders.find(f => f.path.toLowerCase() === lower);
+    setForm(f => ({ ...f, targetFolder: match ? match.path : suggested }));
+  }, [form.system, form.contentType, form.moduleName, folders]);
 
   useEffect(() => {
     get('/library/folders').then(f => {
@@ -219,16 +223,17 @@ export default function UploadsPage() {
             </label>
             <select value={form.targetFolder} required onChange={f('targetFolder')}>
               <option value="">— Select a folder —</option>
-              {form.system && form.contentType && (
-                <option value={isModule && form.moduleName
-                  ? `${form.system}/Adventure Module/${form.moduleName}`
-                  : `${form.system}/${form.contentType}`}>
-                  {isModule && form.moduleName
-                    ? `${form.system}/Adventure Module/${form.moduleName} (suggested)`
-                    : `${form.system}/${form.contentType} (suggested)`}
-                </option>
-              )}
-              {folders.map(f => <option key={f.id} value={f.path}>{'  '.repeat(f.depth)}{f.name}</option>)}
+              {/* Suggested path — shown if it doesn't already exist in folders list */}
+              {form.system && form.contentType && (() => {
+                const suggested = isModule && form.moduleName.trim()
+                  ? `${form.system}/Adventure Module/${form.moduleName.trim()}`
+                  : `${form.system}/${form.contentType}`;
+                const exists = folders.some(fo => fo.path.toLowerCase() === suggested.toLowerCase());
+                return !exists ? (
+                  <option value={suggested}>{suggested} ✦ new folder</option>
+                ) : null;
+              })()}
+              {folders.map(fo => <option key={fo.id} value={fo.path}>{'  '.repeat(fo.depth)}{fo.name}</option>)}
             </select>
           </div>
 

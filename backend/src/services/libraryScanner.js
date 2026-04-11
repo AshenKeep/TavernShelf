@@ -146,10 +146,17 @@ async function rebuildFolders(db) {
   }
 
   // Remove DB folders whose directories no longer exist on disk
-  for (const folder of existingFolders) {
-    if (folder.path === '.') continue;
-    const absPath = join(LIBRARY_PATH, folder.path);
-    if (!existsSync(absPath)) {
+  // Sort by path depth DESC so children are deleted before parents
+  const staleFolders = existingFolders
+    .filter(f => f.path !== '.' && !existsSync(join(LIBRARY_PATH, f.path)))
+    .sort((a, b) => b.path.split('/').length - a.path.split('/').length);
+
+  for (const folder of staleFolders) {
+    try {
+      await dbRun(db, 'DELETE FROM folders WHERE id = $1', [folder.id]);
+    } catch (e) {
+      // If FK still fails, null out parent_id references first then retry
+      await dbRun(db, 'UPDATE folders SET parent_id = NULL WHERE parent_id = $1', [folder.id]);
       await dbRun(db, 'DELETE FROM folders WHERE id = $1', [folder.id]);
     }
   }

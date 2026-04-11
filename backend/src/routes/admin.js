@@ -267,13 +267,25 @@ router.get('/logs/:filename', async (req, res) => {
 
 
 
-// DELETE /api/admin/folders/:id — remove folder from DB (not from disk)
+// DELETE /api/admin/folders/:id — remove folder and all children from DB (not from disk)
 router.delete('/folders/:id', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     const db = await getDb();
     const folder = await dbGet(db, 'SELECT * FROM folders WHERE id = $1', [req.params.id]);
     if (!folder) return res.status(404).json({ error: 'Folder not found' });
-    await dbRun(db, 'DELETE FROM folders WHERE id = $1', [req.params.id]);
+
+    // Delete all descendant folders first (bottom-up) to avoid FK violations
+    // Find all folders whose path starts with this folder's path
+    const descendants = await dbAll(db,
+      "SELECT id, path FROM folders WHERE path LIKE $1 ORDER BY path DESC",
+      [folder.path + '/%']
+    );
+    for (const desc of descendants) {
+      await dbRun(db, 'DELETE FROM folders WHERE id = $1', [desc.id]);
+    }
+    // Now delete the folder itself
+    await dbRun(db, 'DELETE FROM folders WHERE id = $1', [folder.id]);
+
     logger.event('Admin', 'Folder removed from DB', { path: folder.path, by: req.user.email });
     res.json({ message: 'Folder removed' });
   } catch (e) { logger.error('Admin', 'Folder delete error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
