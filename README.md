@@ -34,7 +34,7 @@ TavernShelf lets you host your entire tabletop RPG collection, accessible from a
 - **Credential change** — admins can change their own email and password from settings
 
 ### Upload Queue
-- **Submit for approval** — any uploader can submit files; admin approves or rejects
+- **Submit for approval** — any uploader can submit files; admin approves or rejects. No hardcoded file size limit — set `MAX_UPLOAD_MB` in your `.env` (default 5 GB)
 - **Pre-approval editing** — edit title, authors, system, content type, and more before approving
 - **Cross-volume move** — uses copy+delete so uploads work regardless of Docker volume configuration
 
@@ -128,6 +128,7 @@ Open **http://localhost:7624** — sign in with your admin credentials.
 | `PORT` | | `7624` | Host port to expose TavernShelf on |
 | `JWT_EXPIRY` | | `7d` | How long login sessions last |
 | `TRUST_PROXY` | | `0` | Set to `1` when running behind a reverse proxy |
+| `MAX_UPLOAD_MB` | | `5120` | Maximum upload file size in MB (default 5 GB) |
 | `DB_PATH` | | `/app/data/pgdata` | Directory where PGlite stores its data |
 
 ---
@@ -205,7 +206,7 @@ server {
     ssl_certificate     /etc/letsencrypt/live/tavernshelf.yourdomain.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/tavernshelf.yourdomain.com/privkey.pem;
 
-    client_max_body_size 500M;
+    client_max_body_size 10G;  # Match or exceed MAX_UPLOAD_MB in your .env
 
     location / {
         proxy_pass         http://localhost:7624;

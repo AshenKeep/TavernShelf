@@ -18,7 +18,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 500 * 1024 * 1024 },
+  limits: { fileSize: (parseInt(process.env.MAX_UPLOAD_MB) || 5120) * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const ext = extname(file.originalname).slice(1).toLowerCase();
     SUPPORTED_EXTENSIONS.has(ext) ? cb(null, true) : cb(new Error(`Unsupported file type: .${ext}`));

@@ -161,7 +161,7 @@ export default function UploadsPage() {
               <div>
                 <div style={{ fontSize: 28, marginBottom: 8 }}>📤</div>
                 <div style={{ color: 'var(--text-2)', fontSize: 14 }}>Click to select a file</div>
-                <div style={{ color: 'var(--text-3)', fontSize: 12, marginTop: 4 }}>PDF, CBZ, CBR, JPG, PNG — max 500 MB</div>
+                <div style={{ color: 'var(--text-3)', fontSize: 12, marginTop: 4 }}>PDF, CBZ, CBR, JPG, PNG</div>
               </div>
             )}
           </div>

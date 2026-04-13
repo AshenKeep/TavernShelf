@@ -84,7 +84,7 @@ if (existsSync(publicDir)) {
 // Error handler
 app.use((err, req, res, next) => {
   logger.error('HTTP', err.message, { path: req.path, stack: err.stack?.split('\n')[1]?.trim() });
-  if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'File too large (max 500 MB)' });
+  if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: `File too large (max ${process.env.MAX_UPLOAD_MB || 5120} MB)` });
   res.status(500).json({ error: NODE_ENV === 'development' ? err.message : 'Internal server error' });
 });
 
