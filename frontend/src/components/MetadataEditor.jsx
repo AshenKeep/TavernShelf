@@ -81,8 +81,25 @@ export default function MetadataEditor({ item, onClose, onSave }) {
   const [writeMsg, setWriteMsg]           = useState('');
   const [writeError, setWriteError]       = useState('');
   const [error, setError]                 = useState('');
+  const [moduleFolders, setModuleFolders]   = useState([]);
 
   const canWriteToFile = ['pdf','cbz'].includes(item.file_type);
+
+  // Detect if this item is inside a module folder
+  const [currentModulePath, setCurrentModulePath] = useState(null);
+
+  useEffect(() => {
+    get('/library/folders').then(tree => {
+      const flat = [];
+      const flatten = (nodes) => nodes.forEach(n => { flat.push(n); flatten(n.children || []); });
+      flatten(tree);
+      const modules = flat.filter(f => f.is_module);
+      setModuleFolders(modules);
+      // Check if item.path starts with any module folder path
+      const inModule = modules.find(m => item.path.startsWith(m.path + '/') || item.path === m.path);
+      setCurrentModulePath(inModule?.path || null);
+    }).catch(() => {});
+  }, [item.id]);
 
   // Load file metadata on mount
   useEffect(() => {
@@ -319,6 +336,36 @@ export default function MetadataEditor({ item, onClose, onSave }) {
             {error}
           </div>
         )}
+
+        {/* Location info */}
+        <div style={{ background:'var(--bg-3)', border:'1px solid var(--border)', borderRadius:8, padding:'10px 14px', marginBottom:14, fontSize:12 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom: currentModulePath ? 6 : 0 }}>
+            <span style={{ color:'var(--text-3)', minWidth:60 }}>Location</span>
+            <span style={{ fontFamily:'monospace', color:'var(--text-2)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1 }} title={item.path}>{item.path}</span>
+          </div>
+          {currentModulePath && (
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <span style={{ color:'var(--text-3)', minWidth:60 }}>Module</span>
+              <span style={{ color:'var(--amber-hi)', fontSize:11 }}>⚔ {currentModulePath.split('/').pop()}</span>
+              <span style={{ color:'var(--text-3)', fontSize:11 }}>({currentModulePath})</span>
+            </div>
+          )}
+          {!currentModulePath && moduleFolders.length > 0 && (
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:6 }}>
+              <span style={{ color:'var(--text-3)', minWidth:60 }}>Module</span>
+              <select onChange={async e => {
+                if (!e.target.value) return;
+                try {
+                  await post(`/library/items/${item.id}/move`, { targetFolder: e.target.value });
+                  window.location.reload();
+                } catch(err) { setError(err.message); }
+              }} defaultValue="" style={{ fontSize:11, width:'auto' }}>
+                <option value="">— Assign to module folder —</option>
+                {moduleFolders.map(m => <option key={m.id} value={m.path}>{m.path}</option>)}
+              </select>
+            </div>
+          )}
+        </div>
 
         {/* Form fields */}
         <div style={{ display:'flex', flexDirection:'column', gap:12 }}>

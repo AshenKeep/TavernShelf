@@ -98,7 +98,38 @@ router.post('/:id/approve', requireAuth, requireRole('admin'), async (req, res) 
       "UPDATE upload_queue SET status='approved', reviewed_by=$1, reviewed_at=$2 WHERE id=$3",
       [req.user.id, now(), item.id]
     );
+
+    // Insert directly into library_items using the queue's metadata so it's
+    // never treated as an unknown file by the scanner. metadata_source='upload'
+    // prevents autoFetchMetadata from overwriting what the uploader specified.
+    const relPath = join(item.target_folder, safeFilename).replace(/\\/g, '/');
+    const ext = item.filename.split('.').pop().toLowerCase();
+    const { FILE_TYPE_MAP } = await import('../config.js');
+    const fileType = FILE_TYPE_MAP[ext] || 'other';
+    const itemId = uuid();
+    const existing = await dbGet(db, 'SELECT id FROM library_items WHERE path = $1', [relPath]);
+    if (!existing) {
+      await dbRun(db, `
+        INSERT INTO library_items
+          (id, path, filename, title, authors, description, system, content_type,
+           tags, file_size, file_type, metadata_source, created_at, updated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'upload',$12,$12)
+      `, [
+        itemId, relPath, safeFilename,
+        item.title,
+        item.authors || '[]',
+        item.description || '',
+        item.system || '',
+        item.content_type || '',
+        item.tags || '[]',
+        item.file_size,
+        fileType,
+        now(),
+      ]);
+    }
+
     logger.event('Upload', 'Upload approved', { title: item.title, by: req.user.email, dest: item.target_folder });
+    // Scan in background to pick up cover generation and folder counts
     scanLibrary().catch(e => logger.error('Scanner', 'Post-approve scan failed', { error: e.message }));
     res.json({ message: 'Approved and added to library' });
   } catch (e) { logger.error('Upload', 'Approve error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }

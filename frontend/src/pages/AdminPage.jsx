@@ -271,6 +271,142 @@ function OrganisationTab() {
   );
 }
 
+
+function AboutTab() {
+  const { get } = useApi();
+  const [serverVersion, setServerVersion] = useState(null);
+  const [latestRelease, setLatestRelease] = useState(null);
+  const [checking, setChecking]           = useState(false);
+  const [checkError, setCheckError]       = useState('');
+
+  useEffect(() => {
+    get('/health').then(h => setServerVersion(h.version)).catch(() => {});
+  }, []);
+
+  const checkLatest = async () => {
+    setChecking(true); setCheckError(''); setLatestRelease(null);
+    try {
+      const res = await fetch('https://api.github.com/repos/AshenKeep/TavernShelf/releases/latest');
+      if (!res.ok) throw new Error(`GitHub API error: ${res.status}`);
+      const data = await res.json();
+      setLatestRelease(data);
+    } catch (e) {
+      setCheckError(e.message);
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const current = serverVersion || '—';
+  const latest  = latestRelease?.tag_name?.replace(/^v/, '') || null;
+  const isOutdated = latest && current !== '—' && latest !== current;
+  const isUpToDate = latest && current !== '—' && latest === current;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 560 }}>
+
+      {/* Version card */}
+      <div className="card" style={{ padding: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+          <div style={{ fontSize: 32 }}>⚔</div>
+          <div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, color: 'var(--text-0)' }}>TavernShelf</div>
+            <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Self-hosted TTRPG digital library</div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 12, color: 'var(--text-3)', minWidth: 120 }}>Running version</span>
+            <span style={{ fontFamily: 'monospace', fontSize: 14, color: 'var(--text-0)', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 8px' }}>
+              v{current}
+            </span>
+          </div>
+
+          {latestRelease && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 12, color: 'var(--text-3)', minWidth: 120 }}>Latest release</span>
+              <span style={{ fontFamily: 'monospace', fontSize: 14, color: isOutdated ? 'var(--amber-hi)' : 'var(--green-hi)', background: isOutdated ? 'rgba(200,136,42,0.12)' : 'rgba(36,80,42,0.15)', border: `1px solid ${isOutdated ? 'rgba(200,136,42,0.3)' : 'rgba(36,80,42,0.3)'}`, borderRadius: 4, padding: '2px 8px' }}>
+                v{latest}
+              </span>
+              {isOutdated && <span style={{ fontSize: 12, color: 'var(--amber-hi)' }}>⚠ update available</span>}
+              {isUpToDate && <span style={{ fontSize: 12, color: 'var(--green-hi)' }}>✓ up to date</span>}
+            </div>
+          )}
+        </div>
+
+        <div style={{ marginTop: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-ghost btn-sm" onClick={checkLatest} disabled={checking}>
+            {checking ? <><span className="spinner" style={{ width: 12, height: 12 }} /> Checking…</> : '↑ Check for updates'}
+          </button>
+          {isOutdated && (
+            <a href="https://github.com/AshenKeep/TavernShelf/releases/latest" target="_blank" rel="noreferrer"
+              className="btn btn-primary btn-sm">
+              View release →
+            </a>
+          )}
+        </div>
+        {checkError && (
+          <div style={{ fontSize: 12, color: 'var(--red-hi)', marginTop: 10 }}>
+            Could not reach GitHub: {checkError}
+          </div>
+        )}
+        {latestRelease?.body && (
+          <div style={{ marginTop: 16, padding: '12px 14px', background: 'var(--bg-3)', borderRadius: 8, border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>
+              {latestRelease.name} release notes
+            </div>
+            <pre style={{ fontSize: 12, color: 'var(--text-2)', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-ui)', lineHeight: 1.6, maxHeight: 200, overflow: 'auto' }}>
+              {latestRelease.body?.slice(0, 800)}{latestRelease.body?.length > 800 ? '…' : ''}
+            </pre>
+          </div>
+        )}
+      </div>
+
+      {/* Links */}
+      <div className="card" style={{ padding: 20 }}>
+        <h3 style={{ fontFamily: 'var(--font-display)', color: 'var(--text-0)', marginBottom: 14, fontSize: 15 }}>Resources</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[
+            ['GitHub Repository', 'https://github.com/AshenKeep/TavernShelf'],
+            ['Changelog', 'https://github.com/AshenKeep/TavernShelf/blob/main/CHANGELOG.md'],
+            ['Report an Issue', 'https://github.com/AshenKeep/TavernShelf/issues'],
+            ['Container Registry (GHCR)', 'https://github.com/AshenKeep/TavernShelf/pkgs/container/tavernshelf'],
+          ].map(([label, url]) => (
+            <a key={url} href={url} target="_blank" rel="noreferrer"
+              style={{ fontSize: 13, color: 'var(--amber-hi)', display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none' }}
+              onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+              onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}>
+              {label} ↗
+            </a>
+          ))}
+        </div>
+      </div>
+
+      {/* Tech stack */}
+      <div className="card" style={{ padding: 20 }}>
+        <h3 style={{ fontFamily: 'var(--font-display)', color: 'var(--text-0)', marginBottom: 14, fontSize: 15 }}>Tech Stack</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 20px', fontSize: 12 }}>
+          {[
+            ['Backend',   'Node.js 20, Express'],
+            ['Database',  'PGlite (embedded Postgres)'],
+            ['Frontend',  'React 18, Vite'],
+            ['PDF',       'pdf-lib, PDF.js'],
+            ['Container', 'Docker, GHCR'],
+            ['Email',     'Nodemailer (SMTP)'],
+          ].map(([k, v]) => (
+            <div key={k}>
+              <span style={{ color: 'var(--text-3)' }}>{k}: </span>
+              <span style={{ color: 'var(--text-1)' }}>{v}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
 function EmailTab() {
   const { get, post, put } = useApi();
   const [form, setForm] = useState({ host:'', port:'587', secure:false, user:'', pass:'', from:'', enabled:false });
@@ -663,6 +799,7 @@ export default function AdminPage() {
     ['organisation', 'Organisation'],
     ['email',        'Email'],
     ['settings',     'Settings'],
+    ['about',        'About'],
   ];
 
   return (
@@ -846,6 +983,7 @@ export default function AdminPage() {
       {tab === 'users' && <UsersTab />}
 
       {tab === 'settings' && <SettingsTab />}
+      {tab === 'about' && <AboutTab />}
       {tab === 'email' && <EmailTab />}
       {tab === 'organisation' && <OrganisationTab />}
 

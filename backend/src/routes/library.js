@@ -386,6 +386,25 @@ router.get('/overview', requireAuth, async (req, res) => {
   } catch (e) { console.error('[Library] Overview:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
+
+// POST /api/library/items/:id/move — move item to a specific folder
+router.post('/items/:id/move', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { targetFolder } = req.body;
+    if (!targetFolder) return res.status(400).json({ error: 'targetFolder is required' });
+
+    const db = await getDb();
+    const item = await dbGet(db, 'SELECT * FROM library_items WHERE id = $1', [req.params.id]);
+    if (!item) return res.status(404).json({ error: 'Item not found' });
+
+    const { basename } = await import('path');
+    const newRelPath = `${targetFolder}/${basename(item.path)}`;
+
+    const moved = await moveItem(db, item, newRelPath);
+    res.json(parseItem(moved));
+  } catch (e) { console.error('[Library] Move:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
 // POST /api/library/scan
 router.post('/scan', requireAuth, requireRole('admin'), async (req, res) => {
   res.json({ message: 'Scan started' });

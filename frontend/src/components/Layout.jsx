@@ -99,10 +99,11 @@ export default function Layout() {
         display: 'flex', alignItems: 'center', gap: 0, padding: '0 12px', zIndex: 50,
       }}>
 
-        {/* Logo + name */}
+        {/* Logo + name + version */}
         <button onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderRadius: 6, background: 'none', border: 'none', cursor: 'pointer', marginRight: 8, flexShrink: 0 }}>
           <Logo size={26} />
           <span style={{ fontFamily: 'var(--font-display)', fontSize: 16, color: 'var(--amber-hi)', letterSpacing: '0.02em' }}>TavernShelf</span>
+          <span style={{ fontSize: 10, color: 'var(--text-3)', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px', fontFamily: 'monospace', letterSpacing: '0.03em' }}>v{VERSION}</span>
         </button>
 
         {/* System dropdown */}
