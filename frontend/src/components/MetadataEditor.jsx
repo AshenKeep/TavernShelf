@@ -82,6 +82,9 @@ export default function MetadataEditor({ item, onClose, onSave }) {
   const [writeError, setWriteError]       = useState('');
   const [error, setError]                 = useState('');
   const [moduleFolders, setModuleFolders]   = useState([]);
+  const [allFolders, setAllFolders]           = useState([]);
+  const [moveTarget, setMoveTarget]           = useState('');
+  const [moving, setMoving]                   = useState(false);
 
   const canWriteToFile = ['pdf','cbz'].includes(item.file_type);
 
@@ -94,6 +97,7 @@ export default function MetadataEditor({ item, onClose, onSave }) {
       const flatten = (nodes) => nodes.forEach(n => { flat.push(n); flatten(n.children || []); });
       flatten(tree);
       const modules = flat.filter(f => f.is_module);
+      setAllFolders(flat);
       setModuleFolders(modules);
       // Check if item.path starts with any module folder path
       const inModule = modules.find(m => item.path.startsWith(m.path + '/') || item.path === m.path);
@@ -337,34 +341,79 @@ export default function MetadataEditor({ item, onClose, onSave }) {
           </div>
         )}
 
-        {/* Location info */}
-        <div style={{ background:'var(--bg-3)', border:'1px solid var(--border)', borderRadius:8, padding:'10px 14px', marginBottom:14, fontSize:12 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom: currentModulePath ? 6 : 0 }}>
-            <span style={{ color:'var(--text-3)', minWidth:60 }}>Location</span>
-            <span style={{ fontFamily:'monospace', color:'var(--text-2)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1 }} title={item.path}>{item.path}</span>
+        {/* Location + Move */}
+        <div style={{ background:'var(--bg-3)', border:'1px solid var(--border)', borderRadius:8, padding:'14px', marginBottom:14, fontSize:12 }}>
+          <div style={{ fontSize:11, color:'var(--text-3)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:10 }}>File Location</div>
+
+          {/* Current path */}
+          <div style={{ display:'flex', gap:8, marginBottom:8, alignItems:'center' }}>
+            <span style={{ color:'var(--text-3)', minWidth:56, flexShrink:0 }}>Current</span>
+            <span style={{ fontFamily:'monospace', color:'var(--text-2)', fontSize:11, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1 }} title={item.path}>
+              {item.path}
+            </span>
           </div>
+
+          {/* Module badge if inside one */}
           {currentModulePath && (
-            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-              <span style={{ color:'var(--text-3)', minWidth:60 }}>Module</span>
-              <span style={{ color:'var(--amber-hi)', fontSize:11 }}>⚔ {currentModulePath.split('/').pop()}</span>
-              <span style={{ color:'var(--text-3)', fontSize:11 }}>({currentModulePath})</span>
+            <div style={{ display:'flex', gap:8, marginBottom:10, alignItems:'center' }}>
+              <span style={{ color:'var(--text-3)', minWidth:56, flexShrink:0 }}>Module</span>
+              <span style={{ color:'var(--amber-hi)', background:'rgba(200,136,42,0.12)', border:'1px solid rgba(200,136,42,0.25)', borderRadius:4, padding:'1px 8px' }}>
+                ⚔ {currentModulePath}
+              </span>
             </div>
           )}
-          {!currentModulePath && moduleFolders.length > 0 && (
-            <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:6 }}>
-              <span style={{ color:'var(--text-3)', minWidth:60 }}>Module</span>
-              <select onChange={async e => {
-                if (!e.target.value) return;
-                try {
-                  await post(`/library/items/${item.id}/move`, { targetFolder: e.target.value });
-                  window.location.reload();
-                } catch(err) { setError(err.message); }
-              }} defaultValue="" style={{ fontSize:11, width:'auto' }}>
-                <option value="">— Assign to module folder —</option>
-                {moduleFolders.map(m => <option key={m.id} value={m.path}>{m.path}</option>)}
+
+          {/* Move to folder */}
+          <div style={{ borderTop:'1px solid var(--border)', paddingTop:10, marginTop:4 }}>
+            <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+              <span style={{ color:'var(--text-3)', minWidth:56, flexShrink:0, fontSize:11 }}>Move to</span>
+              <select value={moveTarget} onChange={e => setMoveTarget(e.target.value)}
+                style={{ flex:1, fontSize:11, fontFamily:'monospace', minWidth:200 }}>
+                <option value="">— Select destination folder —</option>
+                {/* Module folders first */}
+                {moduleFolders.length > 0 && (
+                  <optgroup label="⚔ Module Folders">
+                    {moduleFolders.map(m => (
+                      <option key={m.id} value={m.path}>{m.path}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {/* Subfolders of module folders */}
+                {moduleFolders.flatMap(m =>
+                  allFolders.filter(f => f.path.startsWith(m.path + '/'))
+                ).length > 0 && (
+                  <optgroup label="  Module Subfolders">
+                    {moduleFolders.flatMap(m =>
+                      allFolders.filter(f => f.path.startsWith(m.path + '/'))
+                        .map(f => <option key={f.id} value={f.path}>{'  '.repeat(f.depth)}{f.name} ({f.path})</option>)
+                    )}
+                  </optgroup>
+                )}
+                {/* All other folders */}
+                <optgroup label="Library Folders">
+                  {allFolders
+                    .filter(f => !moduleFolders.some(m => f.path === m.path || f.path.startsWith(m.path + '/')))
+                    .map(f => <option key={f.id} value={f.path}>{'  '.repeat(f.depth)}{f.name}</option>)
+                  }
+                </optgroup>
               </select>
+              <button type="button" className="btn btn-primary btn-sm" disabled={!moveTarget || moving}
+                onClick={async () => {
+                  setMoving(true); setError('');
+                  try {
+                    await post(`/library/items/${item.id}/move`, { targetFolder: moveTarget });
+                    window.location.reload();
+                  } catch(err) { setError(err.message); setMoving(false); }
+                }}>
+                {moving ? <span className="spinner" style={{ width:11, height:11 }}/> : 'Move'}
+              </button>
             </div>
-          )}
+            {moveTarget && (
+              <div style={{ fontSize:10, color:'var(--text-3)', marginTop:5, fontFamily:'monospace', paddingLeft:64 }}>
+                → {moveTarget}/
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Form fields */}
