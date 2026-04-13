@@ -5,6 +5,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.4] — 2026-04-13
+
+### Fixed — Module folder handling
+
+**Upload form:**
+- Uploading a file that belongs inside a module (e.g. Maps for Curse of Strahd)
+  now has an explicit flow: tick "This file belongs inside an Adventure Module folder",
+  pick which module, then pick an optional subfolder (Maps, Handouts, etc.)
+- Subfolders of the selected module are shown in the subfolder dropdown — create
+  them first via the File Explorer if needed
+- Content type (e.g. Battle Maps) remains as a metadata tag for library filtering;
+  the file physically stays in the module folder
+- A notice in Step 2 confirms the file will stay in the module folder
+
+**Auto-organise:**
+- Files inside any `is_module=TRUE` folder are now permanently protected from
+  auto-organise, regardless of their content type
+- Previously only `managed='manual'` folders were protected; module folders
+  marked as auto were still being moved based on content type
+
+---
+
 ## [0.1.3] — 2026-04-11
 
 ### Added — Navigation, File Explorer, ISBN, Upload flow

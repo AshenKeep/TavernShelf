@@ -100,7 +100,12 @@ async function updateFolderCount(db, folderPath) {
 // ── Check if a path is inside a manually-managed module folder ──
 
 async function isManuallyManaged(db, relPath) {
-  const folders = await dbAll(db, "SELECT path, managed FROM folders WHERE managed = 'manual'");
+  // Treat both manually-managed folders AND module folders as protected
+  // Files inside a module folder stay where they are regardless of content type
+  // The content type is just a metadata tag for library filtering
+  const folders = await dbAll(db,
+    "SELECT path, managed, is_module FROM folders WHERE managed = 'manual' OR is_module = TRUE"
+  );
   return folders.some(f => relPath.startsWith(f.path + '/') || relPath === f.path);
 }
 

@@ -13,9 +13,9 @@ function formatSize(b) {
 
 function StatusBadge({ status }) {
   const map = {
-    pending:  { cls: 'badge-gold',   label: 'Pending' },
-    approved: { cls: 'badge-green',  label: 'Approved' },
-    rejected: { cls: 'badge-red',    label: 'Rejected' },
+    pending:  { cls: 'badge-gold',  label: 'Pending' },
+    approved: { cls: 'badge-green', label: 'Approved' },
+    rejected: { cls: 'badge-red',   label: 'Rejected' },
   };
   const { cls, label } = map[status] || { cls: 'badge-gray', label: status };
   return <span className={`badge ${cls}`}>{label}</span>;
@@ -27,7 +27,8 @@ export default function UploadsPage() {
   const fileRef       = useRef(null);
 
   const [tab, setTab]           = useState('submit');
-  const [folders, setFolders]   = useState([]);
+  const [folders, setFolders]   = useState([]); // flat list
+  const [moduleFolders, setModuleFolders] = useState([]); // only is_module=true
   const [queue, setQueue]       = useState([]);
   const [qStatus, setQStatus]   = useState('pending');
   const [uploading, setUploading] = useState(false);
@@ -37,40 +38,58 @@ export default function UploadsPage() {
 
   const [form, setForm] = useState({
     system: '', contentType: '', moduleName: '',
-    targetFolder: '', title: '', authors: '',
-    description: '', tags: '',
+    inModule: false,      // is this file part of a module?
+    moduleFolder: '',     // which module folder (path)
+    moduleSubfolder: '',  // optional subfolder within module (e.g. Maps)
+    targetFolder: '', title: '', authors: '', description: '', tags: '',
   });
   const [file, setFile] = useState(null);
 
-  const isModule = form.contentType === 'Adventure Module';
+  const isAdventureModule = form.contentType === 'Adventure Module';
 
-  // Auto-suggest target folder based on system + contentType + moduleName
-  // Prefer an existing folder that matches, otherwise suggest creating a new one
+  // Load folders (flat) and extract module folders
   useEffect(() => {
-    if (!form.system || !form.contentType) return;
-    let suggested = isModule && form.moduleName.trim()
-      ? `${form.system}/Adventure Module/${form.moduleName.trim()}`
-      : `${form.system}/${form.contentType}`;
-
-    // Check if an existing folder path starts with our suggestion (case-insensitive)
-    const lower = suggested.toLowerCase();
-    const match = folders.find(f => f.path.toLowerCase() === lower);
-    setForm(f => ({ ...f, targetFolder: match ? match.path : suggested }));
-  }, [form.system, form.contentType, form.moduleName, folders]);
-
-  useEffect(() => {
-    get('/library/folders').then(f => {
+    get('/library/folders').then(tree => {
       const flat = [];
-      const flatten = (nodes, depth = 0) => nodes.forEach(n => { flat.push({ ...n, depth }); flatten(n.children || [], depth + 1); });
-      flatten(f);
+      const flatten = (nodes, depth = 0) => nodes.forEach(n => {
+        flat.push({ ...n, depth });
+        flatten(n.children || [], depth + 1);
+      });
+      flatten(tree);
       setFolders(flat);
+      setModuleFolders(flat.filter(f => f.is_module));
     }).catch(() => {});
   }, []);
 
-  const loadQueue = () => {
-    get(`/uploads?status=${qStatus}`).then(setQueue).catch(() => {});
-  };
+  // Get subfolders of the selected module folder
+  const moduleSubfolders = form.moduleFolder
+    ? folders.filter(f =>
+        f.path.startsWith(form.moduleFolder + '/') &&
+        f.path.split('/').length === form.moduleFolder.split('/').length + 1
+      )
+    : [];
 
+  // Auto-compute targetFolder
+  useEffect(() => {
+    if (!form.system || !form.contentType) return;
+
+    let suggested;
+
+    if (form.inModule && form.moduleFolder) {
+      // Inside a module — use module subfolder if chosen, else module root
+      suggested = form.moduleSubfolder || form.moduleFolder;
+    } else if (isAdventureModule && form.moduleName.trim()) {
+      suggested = `${form.system}/Adventure Module/${form.moduleName.trim()}`;
+    } else {
+      suggested = `${form.system}/${form.contentType}`;
+    }
+
+    // Prefer existing folder by case-insensitive match
+    const match = folders.find(f => f.path.toLowerCase() === suggested.toLowerCase());
+    setForm(prev => ({ ...prev, targetFolder: match ? match.path : suggested }));
+  }, [form.system, form.contentType, form.moduleName, form.inModule, form.moduleFolder, form.moduleSubfolder, folders]);
+
+  const loadQueue = () => get(`/uploads?status=${qStatus}`).then(setQueue).catch(() => {});
   useEffect(() => { if (tab === 'queue') loadQueue(); }, [tab, qStatus]);
 
   const handleFileChange = (e) => {
@@ -83,7 +102,7 @@ export default function UploadsPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!file) return setError('Please select a file');
-    if (!form.targetFolder) return setError('Target folder could not be determined — please select system and content type');
+    if (!form.targetFolder) return setError('Could not determine target folder — select system and content type');
 
     setError(''); setSuccess(''); setUploading(true); setProgress(0);
 
@@ -107,10 +126,9 @@ export default function UploadsPage() {
         xhr.setRequestHeader('Authorization', `Bearer ${localStorage.getItem('ts_token')}`);
         xhr.send(fd);
       });
-
       setSuccess('File submitted for admin approval!');
       setFile(null); fileRef.current.value = '';
-      setForm(f => ({ ...f, title: '', authors: '', description: '', tags: '', moduleName: '' }));
+      setForm(f => ({ ...f, title: '', authors: '', description: '', tags: '', moduleName: '', moduleSubfolder: '' }));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -119,6 +137,7 @@ export default function UploadsPage() {
   };
 
   const f = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+  const fb = k => e => setForm(p => ({ ...p, [k]: e.target.checked }));
 
   return (
     <div style={{ padding: 24, maxWidth: 800, margin: '0 auto' }}>
@@ -141,32 +160,30 @@ export default function UploadsPage() {
       {tab === 'submit' && (
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-          {/* File drop zone */}
+          {/* File picker */}
           <div style={{
             border: `2px dashed ${file ? 'var(--amber)' : 'var(--border)'}`,
             borderRadius: 'var(--radius-lg)', padding: 32, textAlign: 'center',
-            background: file ? 'rgba(200,136,42,0.06)' : 'var(--bg-2)',
-            transition: 'all 0.15s', cursor: 'pointer',
+            background: file ? 'rgba(200,136,42,0.06)' : 'var(--bg-2)', cursor: 'pointer',
           }} onClick={() => fileRef.current?.click()}>
             <input ref={fileRef} type="file" style={{ display: 'none' }}
-              accept=".pdf,.cbz,.cbr,.jpg,.jpeg,.png,.gif,.webp"
-              onChange={handleFileChange} />
+              accept=".pdf,.cbz,.cbr,.jpg,.jpeg,.png,.gif,.webp" onChange={handleFileChange} />
             {file ? (
-              <div>
+              <>
                 <div style={{ fontSize: 20, marginBottom: 8 }}>📄</div>
                 <div style={{ fontWeight: 500, color: 'var(--text-0)', fontSize: 14 }}>{file.name}</div>
                 <div style={{ color: 'var(--text-3)', fontSize: 12, marginTop: 4 }}>{formatSize(file.size)}</div>
-              </div>
+              </>
             ) : (
-              <div>
+              <>
                 <div style={{ fontSize: 28, marginBottom: 8 }}>📤</div>
                 <div style={{ color: 'var(--text-2)', fontSize: 14 }}>Click to select a file</div>
                 <div style={{ color: 'var(--text-3)', fontSize: 12, marginTop: 4 }}>PDF, CBZ, CBR, JPG, PNG</div>
-              </div>
+              </>
             )}
           </div>
 
-          {/* Step 1: System + Content Type */}
+          {/* Step 1: Classify */}
           <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12 }}>
               1 — Classify
@@ -181,26 +198,23 @@ export default function UploadsPage() {
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Content Type *</label>
-                <select value={form.contentType} onChange={f('contentType')} required>
+                <select value={form.contentType} onChange={e => {
+                  setForm(p => ({ ...p, contentType: e.target.value, inModule: false, moduleFolder: '', moduleSubfolder: '', moduleName: '' }));
+                }} required>
                   <option value="">— Select type —</option>
                   {CONTENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
             </div>
 
-            {/* Module name — shown only for Adventure Module */}
-            {isModule && (
+            {/* Adventure Module: module name */}
+            {isAdventureModule && (
               <div style={{ marginTop: 14 }}>
                 <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>
-                  Adventure Module Name *
-                  <span style={{ color: 'var(--text-3)', fontWeight: 400, marginLeft: 6 }}>This becomes the folder name</span>
+                  Module Folder Name *
+                  <span style={{ color: 'var(--text-3)', fontWeight: 400, marginLeft: 6 }}>creates or uses this folder</span>
                 </label>
-                <input
-                  value={form.moduleName}
-                  onChange={f('moduleName')}
-                  placeholder="e.g. Curse of Strahd"
-                  required={isModule}
-                />
+                <input value={form.moduleName} onChange={f('moduleName')} placeholder="e.g. Curse of Strahd" required={isAdventureModule} />
                 {form.moduleName && (
                   <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4, fontFamily: 'monospace' }}>
                     → {form.system}/Adventure Module/{form.moduleName}/
@@ -208,36 +222,84 @@ export default function UploadsPage() {
                 )}
               </div>
             )}
+
+            {/* Non-module content types: option to place inside a module folder */}
+            {!isAdventureModule && form.contentType && moduleFolders.length > 0 && (
+              <div style={{ marginTop: 14, padding: '12px 14px', background: 'var(--bg-3)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-1)', cursor: 'pointer', marginBottom: form.inModule ? 12 : 0 }}>
+                  <input type="checkbox" checked={form.inModule} onChange={fb('inModule')} />
+                  This file belongs inside an Adventure Module folder
+                </label>
+
+                {form.inModule && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Which module? *</label>
+                      <select value={form.moduleFolder} onChange={e => setForm(p => ({ ...p, moduleFolder: e.target.value, moduleSubfolder: '' }))} required={form.inModule}>
+                        <option value="">— Select module —</option>
+                        {moduleFolders.map(mf => (
+                          <option key={mf.id} value={mf.path}>{mf.path}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {form.moduleFolder && (
+                      <div>
+                        <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>
+                          Subfolder
+                          <span style={{ color: 'var(--text-3)', fontWeight: 400, marginLeft: 6 }}>optional — e.g. Maps, Handouts</span>
+                        </label>
+                        <select value={form.moduleSubfolder} onChange={f('moduleSubfolder')}>
+                          <option value="">— Module root —</option>
+                          {moduleSubfolders.map(sf => (
+                            <option key={sf.id} value={sf.path}>{sf.name}</option>
+                          ))}
+                        </select>
+                        {moduleSubfolders.length === 0 && (
+                          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6 }}>
+                            No subfolders yet — file will go into the module root. Create subfolders in the File Explorer.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Step 2: Target folder (auto-suggested, overridable) */}
+          {/* Step 2: Destination */}
           <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12 }}>
               2 — Destination
             </div>
             <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>
               Target Folder *
-              {form.system && form.contentType && (
-                <span style={{ color: 'var(--green-hi)', marginLeft: 8, fontWeight: 400 }}>✓ auto-suggested</span>
-              )}
+              {form.targetFolder && <span style={{ color: 'var(--green-hi)', marginLeft: 8, fontWeight: 400 }}>✓ set</span>}
             </label>
             <select value={form.targetFolder} required onChange={f('targetFolder')}>
               <option value="">— Select a folder —</option>
-              {/* Suggested path — shown if it doesn't already exist in folders list */}
-              {form.system && form.contentType && (() => {
-                const suggested = isModule && form.moduleName.trim()
-                  ? `${form.system}/Adventure Module/${form.moduleName.trim()}`
-                  : `${form.system}/${form.contentType}`;
-                const exists = folders.some(fo => fo.path.toLowerCase() === suggested.toLowerCase());
-                return !exists ? (
-                  <option value={suggested}>{suggested} ✦ new folder</option>
-                ) : null;
-              })()}
-              {folders.map(fo => <option key={fo.id} value={fo.path}>{'  '.repeat(fo.depth)}{fo.name}</option>)}
+              {/* Suggested new folder if it doesn't exist yet */}
+              {form.targetFolder && !folders.some(fo => fo.path.toLowerCase() === form.targetFolder.toLowerCase()) && (
+                <option value={form.targetFolder}>{form.targetFolder} ✦ new folder</option>
+              )}
+              {folders.map(fo => (
+                <option key={fo.id} value={fo.path}>{'  '.repeat(fo.depth)}{fo.name}</option>
+              ))}
             </select>
+            {form.targetFolder && (
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6, fontFamily: 'monospace' }}>
+                → {form.targetFolder}/
+              </div>
+            )}
+            {form.inModule && form.contentType && (
+              <div style={{ fontSize: 12, color: 'var(--amber-hi)', marginTop: 8 }}>
+                ⚔ File will stay in the module folder. Content type "{form.contentType}" is used as a tag for library filtering only.
+              </div>
+            )}
           </div>
 
-          {/* Step 3: Metadata */}
+          {/* Step 3: Details */}
           <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12 }}>
               3 — Details
@@ -248,7 +310,9 @@ export default function UploadsPage() {
                 <input value={form.title} required onChange={f('title')} placeholder="Book or module title" />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Authors <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(comma-separated)</span></label>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>
+                  Authors <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(comma-separated)</span>
+                </label>
                 <input value={form.authors} onChange={f('authors')} placeholder="Gary Gygax, Dave Arneson" />
               </div>
               <div>
@@ -256,7 +320,9 @@ export default function UploadsPage() {
                 <textarea value={form.description} rows={3} style={{ resize: 'vertical' }} onChange={f('description')} />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>Tags <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(comma-separated)</span></label>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 6 }}>
+                  Tags <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(comma-separated)</span>
+                </label>
                 <input value={form.tags} onChange={f('tags')} placeholder="dungeon, one-shot, horror" />
               </div>
             </div>
