@@ -15,7 +15,7 @@ const router = Router();
 // GET /api/library/items
 router.get('/items', requireAuth, async (req, res) => {
   try {
-    const { q, system, content_type, file_type, folder, page = 1, limit = 48, sort = 'title' } = req.query;
+    const { q, system, content_type, file_type, folder, unsorted, page = 1, limit = 48, sort = 'title' } = req.query;
     const validSorts = { title: 'title', created: 'created_at DESC', size: 'file_size DESC', year: 'year DESC' };
     const orderBy = validSorts[sort] || 'title';
 
@@ -31,6 +31,7 @@ router.get('/items', requireAuth, async (req, res) => {
     if (content_type) { conditions.push(`content_type = $${pi++}`); params.push(content_type); }
     if (file_type)    { conditions.push(`file_type = $${pi++}`);    params.push(file_type); }
     if (folder)       { conditions.push(`path LIKE $${pi++}`);      params.push(`${folder}/%`); }
+    if (unsorted)     { conditions.push(`(system IS NULL OR system = '' OR content_type IS NULL OR content_type = '')`); }
 
     const where = conditions.join(' AND ');
     const db = await getDb();
@@ -344,11 +345,15 @@ router.get('/overview', requireAuth, async (req, res) => {
       ORDER BY system, item_count DESC
     `, params);
 
-    // Also get unsorted count
-    const unsorted = await dbGet(db, `
-      SELECT COUNT(*) as n FROM library_items
-      WHERE (system IS NULL OR system = '' OR content_type IS NULL OR content_type = '')
-    `);
+    // Unsorted = items missing system OR content_type, scoped to system filter if provided
+    const unsortedFilter = system
+      ? `WHERE system = $1 AND (content_type IS NULL OR content_type = '')`
+      : `WHERE (system IS NULL OR system = '' OR content_type IS NULL OR content_type = '')`;
+    const unsortedParams = system ? [system] : [];
+    const unsorted = await dbGet(db,
+      `SELECT COUNT(*) as n FROM library_items ${unsortedFilter}`,
+      unsortedParams
+    );
 
     // Get module folders
     const moduleFolders = await dbAll(db, `

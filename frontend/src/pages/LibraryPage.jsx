@@ -84,7 +84,8 @@ export default function LibraryPage() {
   const [gridLoading, setGridLoading] = useState(false);
 
   // Active tab: 'overview' | content_type string | 'modules' | 'all'
-  const activeTab = content_type || folder || 'overview';
+  const unsorted = searchParams.get('unsorted') === '1';
+  const activeTab = unsorted ? 'unsorted' : (content_type || folder || 'overview');
 
   const updateParam = (key, val) => {
     setSearchParams(prev => {
@@ -114,16 +115,17 @@ export default function LibraryPage() {
     if (system)       params.system       = system;
     if (content_type) params.content_type = content_type;
     if (folder)       params.folder       = folder;
+    if (unsorted)     params.unsorted     = '1';
 
     get('/library/items', params)
       .then(data => { setItems(data.items); setTotal(data.total); setPages(data.pages); })
       .catch(() => {})
       .finally(() => setGridLoading(false));
-  }, [system, content_type, folder, page, sort]);
+  }, [system, content_type, folder, page, sort, unsorted]);
 
   const drillInto = (ct) => updateParam('content_type', ct);
   const drillIntoFolder = (path) => { updateParam('folder', path); updateParam('content_type', ''); };
-  const backToOverview = () => { updateParam('content_type', ''); updateParam('folder', ''); };
+  const backToOverview = () => { setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('content_type'); n.delete('folder'); n.delete('unsorted'); return n; }); };
 
   // Tabs from overview content types
   const hasModules = (overview?.moduleFolders?.length > 0) ||
@@ -197,7 +199,17 @@ export default function LibraryPage() {
 
         {/* Unsorted indicator */}
         {overview?.unsortedCount > 0 && (
-          <TabButton active={false} onClick={() => { updateParam('system', ''); updateParam('content_type', 'unsorted'); }}
+          <TabButton
+            active={searchParams.get('unsorted') === '1'}
+            onClick={() => {
+              const isOn = searchParams.get('unsorted') === '1';
+              setSearchParams(prev => {
+                const next = new URLSearchParams(prev);
+                if (isOn) { next.delete('unsorted'); next.delete('content_type'); }
+                else { next.set('unsorted', '1'); next.delete('content_type'); next.delete('folder'); }
+                return next;
+              });
+            }}
             style={{ color: 'var(--amber-hi)' }}>
             ⚠ Unsorted ({overview.unsortedCount})
           </TabButton>
@@ -290,6 +302,7 @@ export default function LibraryPage() {
               {system && content_type && <span style={{ color: 'var(--text-3)' }}>›</span>}
               {content_type && <span style={{ fontSize: 13, color: 'var(--text-1)' }}>{content_type}</span>}
               {folder && <span style={{ fontSize: 13, color: 'var(--text-1)', fontFamily: 'monospace' }}>{folder.split('/').pop()}</span>}
+              {unsorted && <span style={{ fontSize: 13, color: 'var(--amber-hi)' }}>⚠ Unsorted</span>}
               <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-3)' }}>{total} item{total !== 1 ? 's' : ''}</span>
               <select value={sort} onChange={e => updateParam('sort', e.target.value)} style={{ width: 'auto', fontSize: 12 }}>
                 <option value="title">A → Z</option>
@@ -386,7 +399,7 @@ function MoreTab({ types, activeTab, onSelect }) {
                 padding: '7px 12px', borderRadius: 4, background: 'none', border: 'none',
                 fontSize: 13, cursor: 'pointer', textAlign: 'left',
                 color: activeTab === t.content_type ? 'var(--amber-hi)' : 'var(--text-1)',
-                background: activeTab === t.content_type ? 'rgba(200,136,42,0.1)' : 'transparent',
+                backgroundColor: activeTab === t.content_type ? 'rgba(200,136,42,0.1)' : 'transparent',
               }}>
               {t.content_type}
               <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)' }}>{t.item_count}</span>
