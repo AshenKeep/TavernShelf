@@ -13,7 +13,8 @@ function formatSize(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export default function BookCard({ item }) {
+// affiliated = file lives outside this module folder but is tagged as belonging here
+export default function BookCard({ item, affiliated = false }) {
   const navigate = useNavigate();
   const colors   = FILE_TYPE_COLORS[item.file_type] || FILE_TYPE_COLORS.pdf;
   const [showCampaign, setShowCampaign] = useState(false);
@@ -22,7 +23,9 @@ export default function BookCard({ item }) {
     <div style={{
       cursor: 'pointer', display: 'flex', flexDirection: 'column',
       borderRadius: 'var(--radius-lg)', overflow: 'visible',
-      background: 'var(--bg-2)', border: '1px solid var(--border)',
+      background: affiliated ? 'rgba(200,136,42,0.06)' : 'var(--bg-2)',
+      border: affiliated ? '1px solid rgba(200,136,42,0.35)' : '1px solid var(--border)',
+      borderLeft: affiliated ? '3px solid var(--amber)' : undefined,
       transition: 'transform 0.15s, box-shadow 0.15s, border-color 0.15s',
       position: 'relative',
     }}
@@ -30,14 +33,26 @@ export default function BookCard({ item }) {
       onMouseEnter={e => {
         e.currentTarget.style.transform = 'translateY(-3px)';
         e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(200,136,42,0.2)';
-        e.currentTarget.style.borderColor = 'var(--border-md)';
+        if (!affiliated) e.currentTarget.style.borderColor = 'var(--border-md)';
       }}
       onMouseLeave={e => {
         e.currentTarget.style.transform = '';
         e.currentTarget.style.boxShadow = '';
-        e.currentTarget.style.borderColor = 'var(--border)';
+        if (!affiliated) e.currentTarget.style.borderColor = 'var(--border)';
       }}
     >
+      {/* Affiliated badge */}
+      {affiliated && (
+        <div style={{
+          position: 'absolute', top: -8, left: 8, zIndex: 2,
+          background: 'var(--amber-dim)', border: '1px solid var(--amber)',
+          borderRadius: 4, fontSize: 9, fontWeight: 600, padding: '1px 6px',
+          color: 'var(--text-0)', letterSpacing: '0.05em', textTransform: 'uppercase',
+        }}>
+          Affiliated
+        </div>
+      )}
+
       {/* Cover */}
       <div style={{ aspectRatio: '2/3', background: 'var(--bg-3)', position: 'relative', overflow: 'hidden', flexShrink: 0, borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0' }}>
         {item.cover_path ? (

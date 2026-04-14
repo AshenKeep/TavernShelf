@@ -358,3 +358,91 @@ router.post('/settings/email/test', requireAuth, requireRole('admin'), async (re
 });
 
 export default router;
+
+// ── Upload suggestions ─────────────────────────────────────
+router.get('/upload-suggestions', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const db = await getDb();
+    const rows = await dbAll(db, `
+      SELECT us.*, f.path as folder_path, f.name as folder_name
+      FROM upload_suggestions us
+      LEFT JOIN folders f ON f.id = us.folder_id
+      ORDER BY us.priority DESC, us.name
+    `);
+    res.json(rows);
+  } catch (e) { logger.error('Admin', 'List suggestions', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
+});
+
+router.post('/upload-suggestions', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { name, match_type, match_value, system, content_type, folder_id, priority } = req.body;
+    if (!name || !match_value) return res.status(400).json({ error: 'name and match_value required' });
+    const db = await getDb();
+    const id = (await import('uuid')).v4();
+    const ts = Math.floor(Date.now() / 1000);
+    await dbRun(db, `
+      INSERT INTO upload_suggestions (id, name, match_type, match_value, system, content_type, folder_id, priority, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)
+    `, [id, name, match_type || 'filename_contains', match_value, system || '', content_type || '', folder_id || null, parseInt(priority) || 0, ts]);
+    const row = await dbGet(db, 'SELECT * FROM upload_suggestions WHERE id = $1', [id]);
+    logger.event('Admin', 'Upload suggestion created', { name, by: req.user.email });
+    res.status(201).json(row);
+  } catch (e) { logger.error('Admin', 'Create suggestion', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
+});
+
+router.put('/upload-suggestions/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { name, match_type, match_value, system, content_type, folder_id, priority } = req.body;
+    const db = await getDb();
+    await dbRun(db, `
+      UPDATE upload_suggestions SET name=$1, match_type=$2, match_value=$3, system=$4,
+        content_type=$5, folder_id=$6, priority=$7, updated_at=$8
+      WHERE id=$9
+    `, [name, match_type, match_value, system || '', content_type || '', folder_id || null, parseInt(priority) || 0, Math.floor(Date.now()/1000), req.params.id]);
+    const row = await dbGet(db, 'SELECT * FROM upload_suggestions WHERE id = $1', [req.params.id]);
+    res.json(row);
+  } catch (e) { logger.error('Admin', 'Update suggestion', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
+});
+
+router.delete('/upload-suggestions/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const db = await getDb();
+    await dbRun(db, 'DELETE FROM upload_suggestions WHERE id = $1', [req.params.id]);
+    res.json({ message: 'Deleted' });
+  } catch (e) { logger.error('Admin', 'Delete suggestion', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/admin/upload-suggestions/match — test a filename against all rules
+router.post('/upload-suggestions/match', requireAuth, async (req, res) => {
+  try {
+    const { filename } = req.body;
+    if (!filename) return res.status(400).json({ error: 'filename required' });
+    const db = await getDb();
+    const rules = await dbAll(db, `
+      SELECT us.*, f.path as folder_path, f.name as folder_name
+      FROM upload_suggestions us
+      LEFT JOIN folders f ON f.id = us.folder_id
+      ORDER BY us.priority DESC
+    `);
+    const lower = filename.toLowerCase();
+    const matches = [];
+    for (const rule of rules) {
+      let matched = false;
+      if (rule.match_type === 'filename_contains') {
+        matched = lower.includes(rule.match_value.toLowerCase());
+      } else if (rule.match_type === 'filename_regex') {
+        try { matched = new RegExp(rule.match_value, 'i').test(filename); } catch {}
+      }
+      if (matched) matches.push(rule);
+    }
+    // Merge matches: first match wins per field
+    const suggestion = { system: '', content_type: '', folder_id: null, folder_path: null, folder_name: null, matched_rules: [] };
+    for (const m of matches) {
+      if (!suggestion.system && m.system)       suggestion.system = m.system;
+      if (!suggestion.content_type && m.content_type) suggestion.content_type = m.content_type;
+      if (!suggestion.folder_id && m.folder_id) { suggestion.folder_id = m.folder_id; suggestion.folder_path = m.folder_path; suggestion.folder_name = m.folder_name; }
+      suggestion.matched_rules.push({ id: m.id, name: m.name, match_type: m.match_type, match_value: m.match_value });
+    }
+    res.json(suggestion);
+  } catch (e) { logger.error('Admin', 'Match suggestions', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
+});

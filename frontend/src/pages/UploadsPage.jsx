@@ -52,6 +52,7 @@ export default function UploadsPage() {
   const [progress, setProgress]   = useState(0);
   const [error, setError]         = useState('');
   const [success, setSuccess]     = useState('');
+  const [suggestion, setSuggestion] = useState(null); // matched suggestion from rules
 
   const [form, setForm] = useState({
     system:          '',
@@ -134,11 +135,25 @@ export default function UploadsPage() {
   const loadQueue = () => get(`/uploads?status=${qStatus}`).then(setQueue).catch(() => {});
   useEffect(() => { if (tab === 'queue') loadQueue(); }, [tab, qStatus]);
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const picked = e.target.files[0];
     if (!picked) return;
     setFile(picked);
-    if (!form.title) setForm(prev => ({ ...prev, title: picked.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ') }));
+    const titleFromFilename = picked.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+    setForm(prev => ({ ...prev, title: prev.title || titleFromFilename }));
+
+    // Check upload suggestions
+    try {
+      const match = await post('/admin/upload-suggestions/match', { filename: picked.name });
+      if (match.system || match.content_type || match.folder_id) {
+        setSuggestion(match);
+        setForm(prev => ({
+          ...prev,
+          system:      match.system      || prev.system,
+          contentType: match.content_type || prev.contentType,
+        }));
+      }
+    } catch {} // non-fatal — suggestions are optional
   };
 
   const handleSubmit = async (e) => {

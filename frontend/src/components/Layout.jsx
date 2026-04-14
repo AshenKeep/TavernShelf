@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useAuth, appEvents } from '../context/AuthContext.jsx';
 import { useApi } from '../hooks/useApi.js';
 
-const VERSION = '0.1.4';
+const VERSION = '0.1.5';
 
 const Icon = ({ d, size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">

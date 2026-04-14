@@ -82,9 +82,8 @@ export default function MetadataEditor({ item, onClose, onSave }) {
   const [writeError, setWriteError]       = useState('');
   const [error, setError]                 = useState('');
   const [moduleFolders, setModuleFolders]   = useState([]);
-  const [allFolders, setAllFolders]           = useState([]);
-  const [moveTarget, setMoveTarget]           = useState('');
-  const [moving, setMoving]                   = useState(false);
+  const [affiliatedModules, setAffiliatedModules] = useState([]); // folder_id strings
+  const [savingModules, setSavingModules]       = useState(false);
 
   const canWriteToFile = ['pdf','cbz'].includes(item.file_type);
 
@@ -97,11 +96,14 @@ export default function MetadataEditor({ item, onClose, onSave }) {
       const flatten = (nodes) => nodes.forEach(n => { flat.push(n); flatten(n.children || []); });
       flatten(tree);
       const modules = flat.filter(f => f.is_module);
-      setAllFolders(flat);
       setModuleFolders(modules);
       // Check if item.path starts with any module folder path
       const inModule = modules.find(m => item.path.startsWith(m.path + '/') || item.path === m.path);
       setCurrentModulePath(inModule?.path || null);
+    }).catch(() => {});
+    // Load existing affiliations
+    get(`/library/items/${item.id}/modules`).then(rows => {
+      setAffiliatedModules(rows.map(r => r.id));
     }).catch(() => {});
   }, [item.id]);
 
@@ -161,9 +163,19 @@ export default function MetadataEditor({ item, onClose, onSave }) {
     finally { setFetchingCover(false); }
   };
 
+  const saveModules = async () => {
+    setSavingModules(true);
+    try {
+      await put(`/library/items/${item.id}/modules`, { folderIds: affiliatedModules });
+    } catch (e) { setError(e.message); }
+    finally { setSavingModules(false); }
+  };
+
   const handleSave = async () => {
     setSaving(true); setError('');
     try {
+      // Save module affiliations in parallel
+      saveModules().catch(() => {});
       const updated = await put(`/library/items/${item.id}/metadata`, {
         title:       form.title,
         authors:     form.authors.split(',').map(a=>a.trim()).filter(Boolean),
@@ -341,79 +353,21 @@ export default function MetadataEditor({ item, onClose, onSave }) {
           </div>
         )}
 
-        {/* Location + Move */}
-        <div style={{ background:'var(--bg-3)', border:'1px solid var(--border)', borderRadius:8, padding:'14px', marginBottom:14, fontSize:12 }}>
-          <div style={{ fontSize:11, color:'var(--text-3)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:10 }}>File Location</div>
-
-          {/* Current path */}
-          <div style={{ display:'flex', gap:8, marginBottom:8, alignItems:'center' }}>
-            <span style={{ color:'var(--text-3)', minWidth:56, flexShrink:0 }}>Current</span>
-            <span style={{ fontFamily:'monospace', color:'var(--text-2)', fontSize:11, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1 }} title={item.path}>
-              {item.path}
-            </span>
+        {/* File location — read only, shows module membership */}
+        <div style={{ background:'var(--bg-3)', border:'1px solid var(--border)', borderRadius:8, padding:'10px 14px', marginBottom:14, fontSize:12 }}>
+          <div style={{ display:'flex', gap:8, alignItems:'flex-start' }}>
+            <span style={{ color:'var(--text-3)', minWidth:56, flexShrink:0, paddingTop:1 }}>Path</span>
+            <span style={{ fontFamily:'monospace', color:'var(--text-2)', fontSize:11, wordBreak:'break-all', flex:1 }}>{item.path}</span>
           </div>
-
-          {/* Module badge if inside one */}
           {currentModulePath && (
-            <div style={{ display:'flex', gap:8, marginBottom:10, alignItems:'center' }}>
+            <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:6 }}>
               <span style={{ color:'var(--text-3)', minWidth:56, flexShrink:0 }}>Module</span>
-              <span style={{ color:'var(--amber-hi)', background:'rgba(200,136,42,0.12)', border:'1px solid rgba(200,136,42,0.25)', borderRadius:4, padding:'1px 8px' }}>
+              <span style={{ color:'var(--amber-hi)', background:'rgba(200,136,42,0.12)', border:'1px solid rgba(200,136,42,0.25)', borderRadius:4, padding:'1px 8px', fontSize:11 }}>
                 ⚔ {currentModulePath}
               </span>
+              <span style={{ color:'var(--text-3)', fontSize:11 }}>Content type below is a tag — file stays here</span>
             </div>
           )}
-
-          {/* Move to folder */}
-          <div style={{ borderTop:'1px solid var(--border)', paddingTop:10, marginTop:4 }}>
-            <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
-              <span style={{ color:'var(--text-3)', minWidth:56, flexShrink:0, fontSize:11 }}>Move to</span>
-              <select value={moveTarget} onChange={e => setMoveTarget(e.target.value)}
-                style={{ flex:1, fontSize:11, fontFamily:'monospace', minWidth:200 }}>
-                <option value="">— Select destination folder —</option>
-                {/* Module folders first */}
-                {moduleFolders.length > 0 && (
-                  <optgroup label="⚔ Module Folders">
-                    {moduleFolders.map(m => (
-                      <option key={m.id} value={m.path}>{m.path}</option>
-                    ))}
-                  </optgroup>
-                )}
-                {/* Subfolders of module folders */}
-                {moduleFolders.flatMap(m =>
-                  allFolders.filter(f => f.path.startsWith(m.path + '/'))
-                ).length > 0 && (
-                  <optgroup label="  Module Subfolders">
-                    {moduleFolders.flatMap(m =>
-                      allFolders.filter(f => f.path.startsWith(m.path + '/'))
-                        .map(f => <option key={f.id} value={f.path}>{'  '.repeat(f.depth)}{f.name} ({f.path})</option>)
-                    )}
-                  </optgroup>
-                )}
-                {/* All other folders */}
-                <optgroup label="Library Folders">
-                  {allFolders
-                    .filter(f => !moduleFolders.some(m => f.path === m.path || f.path.startsWith(m.path + '/')))
-                    .map(f => <option key={f.id} value={f.path}>{'  '.repeat(f.depth)}{f.name}</option>)
-                  }
-                </optgroup>
-              </select>
-              <button type="button" className="btn btn-primary btn-sm" disabled={!moveTarget || moving}
-                onClick={async () => {
-                  setMoving(true); setError('');
-                  try {
-                    await post(`/library/items/${item.id}/move`, { targetFolder: moveTarget });
-                    window.location.reload();
-                  } catch(err) { setError(err.message); setMoving(false); }
-                }}>
-                {moving ? <span className="spinner" style={{ width:11, height:11 }}/> : 'Move'}
-              </button>
-            </div>
-            {moveTarget && (
-              <div style={{ fontSize:10, color:'var(--text-3)', marginTop:5, fontFamily:'monospace', paddingLeft:64 }}>
-                → {moveTarget}/
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Form fields */}
@@ -491,6 +445,34 @@ export default function MetadataEditor({ item, onClose, onSave }) {
               </div>
               <input value={form.isbn} onChange={f('isbn')} placeholder="ISBN-10 or ISBN-13" style={{ fontFamily:'monospace' }}/>
             </div>
+
+            {/* Module affiliation */}
+            {moduleFolders.length > 0 && (
+              <div style={{ gridColumn:'1/-1', marginTop:4 }}>
+                <div style={{ display:'flex', alignItems:'center', marginBottom:8, gap:8 }}>
+                  <label style={{ fontSize:12, color:'var(--text-2)', flex:1 }}>Module Affiliations</label>
+                  <span style={{ fontSize:11, color:'var(--text-3)' }}>File stays in its current folder — these are display tags only</span>
+                </div>
+                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                  {moduleFolders.map(mf => {
+                    const isPhysical = currentModulePath === mf.path;
+                    const isAffiliated = affiliatedModules.includes(mf.id);
+                    return (
+                      <label key={mf.id} style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, cursor: isPhysical ? 'default' : 'pointer', color: isPhysical ? 'var(--amber-hi)' : 'var(--text-1)', padding:'5px 8px', borderRadius:6, background: isAffiliated || isPhysical ? 'rgba(200,136,42,0.08)' : 'transparent', border:`1px solid ${isAffiliated || isPhysical ? 'rgba(200,136,42,0.25)' : 'transparent'}` }}>
+                        <input type="checkbox"
+                          checked={isAffiliated || isPhysical}
+                          disabled={isPhysical}
+                          onChange={() => !isPhysical && toggleAffiliation(mf.id)}
+                        />
+                        <span>⚔ {mf.name}</span>
+                        {isPhysical && <span style={{ fontSize:10, color:'var(--amber)', marginLeft:4 }}>— physical location</span>}
+                        {isAffiliated && !isPhysical && <span style={{ fontSize:10, color:'var(--text-3)', marginLeft:4 }}>— affiliated</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Description */}

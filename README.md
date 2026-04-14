@@ -72,7 +72,7 @@ TavernShelf lets you host your entire tabletop RPG collection, accessible from a
 ```yaml
 services:
   tavernshelf:
-    image: ghcr.io/ashenkeep/tavernshelf:0.1.4
+    image: ghcr.io/ashenkeep/tavernshelf:0.1.5
     container_name: tavernshelf
     ports:
       - "7624:3000"
@@ -316,7 +316,8 @@ Development happens on the `dev` branch. `main` is for stable releases.
 
 | Version | Image | Notes |
 |---|---|---|
-| `0.1.4` | `ghcr.io/ashenkeep/tavernshelf:0.1.4` | Current stable — module upload flow, module folder protection |
+| `0.1.5` | `ghcr.io/ashenkeep/tavernshelf:0.1.5` | Current stable — module affiliation, upload rules, affiliated display |
+| `0.1.4` | `ghcr.io/ashenkeep/tavernshelf:0.1.4` | Module upload flow, module folder protection |
 | `0.1.3` | `ghcr.io/ashenkeep/tavernshelf:0.1.3` | New navigation, file explorer, search page, ISBN |
 | `0.1.2` | `ghcr.io/ashenkeep/tavernshelf:0.1.2` | Auto-organise, setup wizard, module folders |
 | `0.1.1` | `ghcr.io/ashenkeep/tavernshelf:0.1.1` | Email invites, campaign invite flow, upload metadata editing |

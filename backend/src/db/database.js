@@ -159,6 +159,32 @@ async function migrate(db) {
       updated_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
     );
 
+
+    -- Module affiliation (many-to-many: items ↔ module folders)
+    CREATE TABLE IF NOT EXISTS library_item_modules (
+      item_id   TEXT NOT NULL REFERENCES library_items(id) ON DELETE CASCADE,
+      folder_id TEXT NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
+      PRIMARY KEY (item_id, folder_id)
+    );
+
+    -- Upload suggestion rules (admin-defined, filename pattern → metadata)
+    CREATE TABLE IF NOT EXISTS upload_suggestions (
+      id           TEXT PRIMARY KEY,
+      name         TEXT NOT NULL,
+      match_type   TEXT NOT NULL DEFAULT 'filename_contains',
+      match_value  TEXT NOT NULL,
+      system       TEXT DEFAULT '',
+      content_type TEXT DEFAULT '',
+      folder_id    TEXT REFERENCES folders(id) ON DELETE SET NULL,
+      priority     INTEGER NOT NULL DEFAULT 0,
+      created_at   BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
+      updated_at   BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_item_modules_item   ON library_item_modules(item_id);
+    CREATE INDEX IF NOT EXISTS idx_item_modules_folder ON library_item_modules(folder_id);
+    CREATE INDEX IF NOT EXISTS idx_suggestions_prio    ON upload_suggestions(priority DESC);
+
     CREATE INDEX IF NOT EXISTS idx_campaigns_owner     ON campaigns(owner_id);
     CREATE INDEX IF NOT EXISTS idx_camp_members_user   ON campaign_members(user_id);
     CREATE INDEX IF NOT EXISTS idx_camp_items_campaign ON campaign_items(campaign_id);
@@ -184,6 +210,33 @@ async function migrate(db) {
   // Add folder management columns for existing installs
   await db.exec(`ALTER TABLE folders ADD COLUMN IF NOT EXISTS is_module BOOLEAN NOT NULL DEFAULT FALSE`);
   await db.exec(`ALTER TABLE folders ADD COLUMN IF NOT EXISTS managed TEXT DEFAULT NULL`);
+
+
+  // v0.1.5 migrations
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS library_item_modules (
+      item_id   TEXT NOT NULL REFERENCES library_items(id) ON DELETE CASCADE,
+      folder_id TEXT NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
+      PRIMARY KEY (item_id, folder_id)
+    )
+  `);
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS upload_suggestions (
+      id           TEXT PRIMARY KEY,
+      name         TEXT NOT NULL,
+      match_type   TEXT NOT NULL DEFAULT 'filename_contains',
+      match_value  TEXT NOT NULL,
+      system       TEXT DEFAULT '',
+      content_type TEXT DEFAULT '',
+      folder_id    TEXT REFERENCES folders(id) ON DELETE SET NULL,
+      priority     INTEGER NOT NULL DEFAULT 0,
+      created_at   BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
+      updated_at   BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+    )
+  `);
+  await db.exec(`CREATE INDEX IF NOT EXISTS idx_item_modules_item   ON library_item_modules(item_id)`);
+  await db.exec(`CREATE INDEX IF NOT EXISTS idx_item_modules_folder ON library_item_modules(folder_id)`);
+  await db.exec(`CREATE INDEX IF NOT EXISTS idx_suggestions_prio    ON upload_suggestions(priority DESC)`);
 
   // Fix cover_path entries that are missing the /covers/ prefix
   // (written incorrectly in early versions)

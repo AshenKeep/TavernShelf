@@ -437,6 +437,214 @@ function AboutTab() {
   );
 }
 
+
+function SuggestionsTab() {
+  const { get, post, put, del } = useApi();
+  const [rules, setRules]       = useState([]);
+  const [folders, setFolders]   = useState([]); // flat list of all folders
+  const [editing, setEditing]   = useState(null); // null | 'new' | rule object
+  const [testFile, setTestFile] = useState('');
+  const [testResult, setTestResult] = useState(null);
+  const [testing, setTesting]   = useState(false);
+  const [saving, setSaving]     = useState(false);
+  const [error, setError]       = useState('');
+
+  const SYSTEMS = ['D&D 5e','D&D 5.5e','D&D 3.5e','D&D 4e','OSE','Pathfinder 1e','Pathfinder 2e','Call of Cthulhu','Shadowrun','Starfinder','Forbidden Lands','Savage Worlds','Year Zero Engine','GURPS','FATE Core','Blades in the Dark','Cairn','Mothership','Mörk Borg','Other'];
+  const TYPES   = ['Core Rulebook','Supplement','Adventure Module','Sourcebook','Bestiary','Campaign Setting','Magic Items','Pregen Characters','Battle Maps','Tokens','Encounter','Quick Reference','System Reference','Other'];
+
+  const load = () => {
+    get('/admin/upload-suggestions').then(setRules).catch(() => {});
+    get('/library/folders').then(tree => {
+      const flat = [];
+      const flatten = (nodes, depth = 0) => nodes.forEach(n => { flat.push({ ...n, depth }); flatten(n.children || [], depth + 1); });
+      flatten(tree);
+      setFolders(flat);
+    }).catch(() => {});
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const blankRule = { name: '', match_type: 'filename_contains', match_value: '', system: '', content_type: '', folder_id: '', priority: 0 };
+
+  const handleSave = async () => {
+    if (!editing.name || !editing.match_value) return setError('Name and match value are required');
+    setSaving(true); setError('');
+    try {
+      if (editing.id) {
+        await put(`/admin/upload-suggestions/${editing.id}`, editing);
+      } else {
+        await post('/admin/upload-suggestions', editing);
+      }
+      setEditing(null); load();
+    } catch (e) { setError(e.message); }
+    finally { setSaving(false); }
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('Delete this rule?')) return;
+    await del(`/admin/upload-suggestions/${id}`).catch(() => {});
+    load();
+  };
+
+  const handleTest = async () => {
+    if (!testFile.trim()) return;
+    setTesting(true); setTestResult(null);
+    try {
+      const result = await post('/admin/upload-suggestions/match', { filename: testFile });
+      setTestResult(result);
+    } catch (e) { setError(e.message); }
+    finally { setTesting(false); }
+  };
+
+  const fe = k => e => setEditing(p => ({ ...p, [k]: e.target.value }));
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+      {/* Explainer */}
+      <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 16px', fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6 }}>
+        <strong style={{ color: 'var(--text-0)' }}>Upload Rules</strong> — when a file is selected for upload, its filename is matched against these rules in priority order.
+        Matching rules pre-fill the System, Content Type, and target Module Folder in the upload form. Users can always override.
+      </div>
+
+      {/* Test input */}
+      <div className="card" style={{ padding: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-0)', marginBottom: 10 }}>Test a filename</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input value={testFile} onChange={e => setTestFile(e.target.value)}
+            placeholder="e.g. CoS_Level2_Maps.pdf"
+            onKeyDown={e => e.key === 'Enter' && handleTest()}
+            style={{ flex: 1 }} />
+          <button className="btn btn-primary btn-sm" onClick={handleTest} disabled={testing || !testFile.trim()}>
+            {testing ? <span className="spinner" style={{ width: 12, height: 12 }} /> : 'Test'}
+          </button>
+        </div>
+        {testResult && (
+          <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--bg-3)', borderRadius: 6, fontSize: 12 }}>
+            {testResult.matched_rules?.length === 0 ? (
+              <span style={{ color: 'var(--text-3)' }}>No rules matched</span>
+            ) : (
+              <>
+                <div style={{ color: 'var(--text-0)', fontWeight: 500, marginBottom: 6 }}>Matched {testResult.matched_rules?.length} rule{testResult.matched_rules?.length !== 1 ? 's' : ''}:</div>
+                {testResult.matched_rules?.map(r => (
+                  <div key={r.id} style={{ color: 'var(--amber-hi)', marginBottom: 2 }}>⚡ {r.name} ({r.match_type}: "{r.match_value}")</div>
+                ))}
+                <div style={{ marginTop: 8, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  {testResult.system && <span className="badge badge-amber">{testResult.system}</span>}
+                  {testResult.content_type && <span className="badge badge-gray">{testResult.content_type}</span>}
+                  {testResult.folder_path && <span style={{ fontSize: 11, color: 'var(--text-2)', fontFamily: 'monospace' }}>→ {testResult.folder_path}</span>}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Rules list */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+          <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 15, color: 'var(--text-0)', flex: 1 }}>Rules ({rules.length})</h3>
+          <button className="btn btn-primary btn-sm" onClick={() => setEditing({ ...blankRule })}>+ Add Rule</button>
+        </div>
+        {rules.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-3)', fontSize: 13 }}>No rules yet — add one to auto-suggest metadata on upload</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {rules.map(rule => (
+              <div key={rule.id} className="card" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 500, color: 'var(--text-0)', fontSize: 13, marginBottom: 3 }}>{rule.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-3)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontFamily: 'monospace', color: 'var(--amber-hi)' }}>{rule.match_type}: "{rule.match_value}"</span>
+                    {rule.system && <span>→ {rule.system}</span>}
+                    {rule.content_type && <span>→ {rule.content_type}</span>}
+                    {rule.folder_path && <span>→ {rule.folder_path}</span>}
+                    <span style={{ color: 'var(--text-3)' }}>priority: {rule.priority}</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setEditing({ ...rule })}>Edit</button>
+                  <button className="btn btn-danger btn-sm" onClick={() => handleDelete(rule.id)}>Delete</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {error && <div style={{ color: 'var(--red-hi)', fontSize: 13 }}>{error}</div>}
+
+      {/* Edit/create modal */}
+      {editing !== null && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+          onClick={e => e.target === e.currentTarget && setEditing(null)}>
+          <div className="card" style={{ width: '100%', maxWidth: 500, padding: 24, maxHeight: '90vh', overflowY: 'auto' }}>
+            <h3 style={{ fontFamily: 'var(--font-display)', color: 'var(--text-0)', marginBottom: 16, fontSize: 16 }}>
+              {editing.id ? 'Edit Rule' : 'New Rule'}
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 5 }}>Rule Name *</label>
+                <input value={editing.name} onChange={fe('name')} placeholder="e.g. Curse of Strahd files" />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 5 }}>Match Type</label>
+                  <select value={editing.match_type} onChange={fe('match_type')}>
+                    <option value="filename_contains">Filename contains</option>
+                    <option value="filename_regex">Filename regex</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 5 }}>Match Value *</label>
+                  <input value={editing.match_value} onChange={fe('match_value')}
+                    placeholder={editing.match_type === 'filename_regex' ? '^CoS_' : 'strahd'} />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 5 }}>Suggest System</label>
+                  <select value={editing.system} onChange={fe('system')}>
+                    <option value="">— None —</option>
+                    {SYSTEMS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 5 }}>Suggest Content Type</label>
+                  <select value={editing.content_type} onChange={fe('content_type')}>
+                    <option value="">— None —</option>
+                    {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 5 }}>Suggest Module Folder</label>
+                <select value={editing.folder_id || ''} onChange={fe('folder_id')} style={{ fontFamily: 'monospace', fontSize: 12 }}>
+                  <option value="">— None —</option>
+                  {folders.filter(f => f.is_module).map(f => (
+                    <option key={f.id} value={f.id}>{'·  '.repeat(f.depth)}{f.name} ({f.path})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 5 }}>Priority <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(higher = applied first)</span></label>
+                <input type="number" value={editing.priority} onChange={fe('priority')} min={0} max={100} />
+              </div>
+            </div>
+            {error && <div style={{ color: 'var(--red-hi)', fontSize: 12, marginTop: 10 }}>{error}</div>}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(null); setError(''); }}>Cancel</button>
+              <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
+                {saving ? <span className="spinner" style={{ width: 12, height: 12 }} /> : 'Save Rule'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EmailTab() {
   const { get, post, put } = useApi();
   const [form, setForm] = useState({ host:'', port:'587', secure:false, user:'', pass:'', from:'', enabled:false });
@@ -829,6 +1037,7 @@ export default function AdminPage() {
     ['organisation', 'Organisation'],
     ['email',        'Email'],
     ['settings',     'Settings'],
+    ['suggestions',  'Upload Rules'],
     ['about',        'About'],
   ];
 
@@ -1013,9 +1222,9 @@ export default function AdminPage() {
       {tab === 'users' && <UsersTab />}
 
       {tab === 'settings' && <SettingsTab />}
+      {tab === 'suggestions' && <SuggestionsTab />}
       {tab === 'about' && <AboutTab />}
       {tab === 'email' && <EmailTab />}
-      {tab === 'organisation' && <OrganisationTab />}
 
     </div>
   );

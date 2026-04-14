@@ -16,7 +16,7 @@ const router = Router();
 // GET /api/library/items
 router.get('/items', requireAuth, async (req, res) => {
   try {
-    const { q, system, content_type, file_type, folder, unsorted, page = 1, limit = 48, sort = 'title' } = req.query;
+    const { q, system, content_type, file_type, folder, unsorted, module_folder_id, page = 1, limit = 48, sort = 'title' } = req.query;
     const validSorts = { title: 'title', created: 'created_at DESC', size: 'file_size DESC', year: 'year DESC' };
     const orderBy = validSorts[sort] || 'title';
 
@@ -36,6 +36,36 @@ router.get('/items', requireAuth, async (req, res) => {
 
     const where = conditions.join(' AND ');
     const db = await getDb();
+
+    // If module_folder_id provided: return physical items UNION affiliated items, with affiliation flag
+    if (module_folder_id) {
+      const folder_row = await dbGet(db, 'SELECT path FROM folders WHERE id = $1', [module_folder_id]);
+      if (!folder_row) return res.status(404).json({ error: 'Module folder not found' });
+
+      const physicalItems = await dbAll(db, `
+        SELECT li.*, TRUE as in_folder, EXISTS(
+          SELECT 1 FROM library_item_modules lim WHERE lim.item_id = li.id AND lim.folder_id = $1
+        ) as is_affiliated
+        FROM library_items li
+        WHERE li.path LIKE $2
+        ORDER BY ${orderBy}
+      `, [module_folder_id, folder_row.path + '/%']);
+
+      const affiliatedItems = await dbAll(db, `
+        SELECT li.*, FALSE as in_folder, TRUE as is_affiliated
+        FROM library_items li
+        JOIN library_item_modules lim ON lim.item_id = li.id
+        WHERE lim.folder_id = $1
+          AND li.path NOT LIKE $2
+        ORDER BY ${orderBy}
+      `, [module_folder_id, folder_row.path + '/%']);
+
+      const allItems = [...physicalItems, ...affiliatedItems];
+      return res.json({
+        items: allItems.map(i => ({ ...parseItem(i), in_folder: !!i.in_folder, is_affiliated: !!i.is_affiliated })),
+        total: allItems.length, page: 1, limit: allItems.length, pages: 1,
+      });
+    }
 
     const countRow = await dbGet(db, `SELECT COUNT(*) as n FROM library_items WHERE ${where}`, params);
     const total = parseInt(countRow.n);
@@ -356,11 +386,15 @@ router.get('/overview', requireAuth, async (req, res) => {
       unsortedParams
     );
 
-    // Get module folders
+    // Get module folders — count physical items + affiliated items (deduplicated)
     const moduleFolders = await dbAll(db, `
-      SELECT f.*, COUNT(li.id) as item_count
+      SELECT f.*,
+        COUNT(DISTINCT CASE WHEN li.path LIKE f.path || '/%' THEN li.id
+                            WHEN lim.item_id IS NOT NULL THEN lim.item_id
+                            ELSE NULL END) as item_count
       FROM folders f
       LEFT JOIN library_items li ON li.path LIKE f.path || '/%'
+      LEFT JOIN library_item_modules lim ON lim.folder_id = f.id
       WHERE f.is_module = TRUE
       ${system ? "AND f.path LIKE $1 || '/%'" : ''}
       GROUP BY f.id
@@ -417,6 +451,38 @@ router.post('/items/:id/move', requireAuth, requireRole('admin'), async (req, re
     logger.error('Library', 'Move failed', { error: e.message, stack: e.stack?.split('\n')[1]?.trim() });
     res.status(500).json({ error: e.message || 'Server error' });
   }
+});
+
+
+// GET /api/library/items/:id/modules — get affiliated modules for an item
+router.get('/items/:id/modules', requireAuth, async (req, res) => {
+  try {
+    const db = await getDb();
+    const rows = await dbAll(db, `
+      SELECT f.* FROM folders f
+      JOIN library_item_modules lim ON lim.folder_id = f.id
+      WHERE lim.item_id = $1
+    `, [req.params.id]);
+    res.json(rows);
+  } catch (e) { logger.error('Library', 'Get item modules', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
+});
+
+// PUT /api/library/items/:id/modules — set affiliated modules (replaces all)
+router.put('/items/:id/modules', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { folderIds = [] } = req.body;
+    const db = await getDb();
+    // Delete existing affiliations then re-insert
+    await dbRun(db, 'DELETE FROM library_item_modules WHERE item_id = $1', [req.params.id]);
+    for (const fid of folderIds) {
+      await dbRun(db,
+        'INSERT INTO library_item_modules (item_id, folder_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+        [req.params.id, fid]
+      );
+    }
+    logger.event('Library', 'Item modules updated', { item: req.params.id, modules: folderIds.length });
+    res.json({ message: 'Module affiliations saved', count: folderIds.length });
+  } catch (e) { logger.error('Library', 'Set item modules', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
 });
 
 // POST /api/library/scan

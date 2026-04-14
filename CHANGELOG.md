@@ -5,6 +5,43 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.5] — 2026-04-14
+
+### Added — Module affiliation, upload rules, affiliated item display
+
+**Module affiliation (many-to-many):**
+- New `library_item_modules` join table: items can belong to multiple modules
+- A file physically lives in one place — module affiliations are display tags only
+- Module view shows physical items + affiliated items together
+- Affiliated items shown with amber left border, tinted background, and "Affiliated" badge
+- Colour-coded legend shown when affiliated items are present in the view
+- MetadataEditor: new "Module Affiliations" section — checkbox list of all module folders
+  - Physical location module auto-checked and disabled (can't un-affiliate physical location)
+  - Affiliated modules shown with "affiliated" label
+  - Saved alongside metadata on every save
+
+**Upload suggestion rules (Admin → Upload Rules tab):**
+- New `upload_suggestions` DB table — admin-defined rules matched against filenames
+- Match types: filename contains (simple) or filename regex (advanced)
+- Each rule can suggest: system, content type, module folder
+- Priority field — higher priority rules are applied first; first match wins per field
+- Test input — type any filename and see which rules fire and what would be suggested
+- Full CRUD: create, edit, delete rules in the Admin panel
+- On upload: filename is matched automatically; results shown as a dismissible banner
+  pre-filling system, content type in the form
+
+**New endpoints:**
+- `GET /api/library/items/:id/modules` — get affiliated modules
+- `PUT /api/library/items/:id/modules` — set affiliated modules
+- `GET /api/library/items` with `?module_folder_id=` — returns physical + affiliated items with flags
+- `GET /api/admin/upload-suggestions` — list rules
+- `POST /api/admin/upload-suggestions` — create rule
+- `PUT /api/admin/upload-suggestions/:id` — update rule
+- `DELETE /api/admin/upload-suggestions/:id` — delete rule
+- `POST /api/admin/upload-suggestions/match` — match filename against all rules
+
+---
+
 ## [0.1.4] — 2026-04-13
 
 ### Fixed — Module folder handling

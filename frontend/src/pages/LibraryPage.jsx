@@ -67,11 +67,12 @@ export default function LibraryPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // URL params
-  const system       = searchParams.get('system') || '';
-  const content_type = searchParams.get('content_type') || '';
-  const folder       = searchParams.get('folder') || '';
-  const page         = parseInt(searchParams.get('page') || '1');
-  const sort         = searchParams.get('sort') || 'title';
+  const system          = searchParams.get('system') || '';
+  const content_type    = searchParams.get('content_type') || '';
+  const folder          = searchParams.get('folder') || '';
+  const module_folder_id = searchParams.get('module_folder_id') || '';
+  const page            = parseInt(searchParams.get('page') || '1');
+  const sort            = searchParams.get('sort') || 'title';
 
   // Overview data
   const [overview, setOverview]   = useState(null);
@@ -85,7 +86,7 @@ export default function LibraryPage() {
 
   // Active tab: 'overview' | content_type string | 'modules' | 'all'
   const unsorted = searchParams.get('unsorted') === '1';
-  const activeTab = unsorted ? 'unsorted' : (content_type || folder || 'overview');
+  const activeTab = unsorted ? 'unsorted' : (module_folder_id ? 'module' : (content_type || folder || 'overview'));
 
   const updateParam = (key, val) => {
     setSearchParams(prev => {
@@ -112,20 +113,30 @@ export default function LibraryPage() {
     if (activeTab === 'overview') return;
     setGridLoading(true);
     const params = { page, sort };
-    if (system)       params.system       = system;
-    if (content_type) params.content_type = content_type;
-    if (folder)       params.folder       = folder;
-    if (unsorted)     params.unsorted     = '1';
+    if (system)            params.system            = system;
+    if (content_type)     params.content_type     = content_type;
+    if (folder)           params.folder           = folder;
+    if (unsorted)         params.unsorted         = '1';
+    if (module_folder_id) params.module_folder_id = module_folder_id;
 
     get('/library/items', params)
       .then(data => { setItems(data.items); setTotal(data.total); setPages(data.pages); })
       .catch(() => {})
       .finally(() => setGridLoading(false));
-  }, [system, content_type, folder, page, sort, unsorted]);
+  }, [system, content_type, folder, page, sort, unsorted, module_folder_id]);
 
   const drillInto = (ct) => updateParam('content_type', ct);
-  const drillIntoFolder = (path) => { updateParam('folder', path); updateParam('content_type', ''); };
-  const backToOverview = () => { setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('content_type'); n.delete('folder'); n.delete('unsorted'); return n; }); };
+  const drillIntoFolder = (path, moduleId) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.delete('content_type'); next.delete('folder'); next.delete('unsorted');
+      if (moduleId) { next.set('module_folder_id', moduleId); }
+      else { next.set('folder', path); }
+      next.delete('page');
+      return next;
+    });
+  };
+  const backToOverview = () => { setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('content_type'); n.delete('folder'); n.delete('unsorted'); n.delete('module_folder_id'); return n; }); };
 
   // Tabs from overview content types
   const hasModules = (overview?.moduleFolders?.length > 0) ||
@@ -188,7 +199,7 @@ export default function LibraryPage() {
         {/* Modules tab */}
         {hasModules && (
           <TabButton
-            active={activeTab === 'Adventure Module' || (folder && overview?.moduleFolders?.some(f => f.path === folder))}
+            active={activeTab === 'Adventure Module' || activeTab === 'module'}
             onClick={() => drillInto('Adventure Module')}>
             ⚔ Modules
             <span style={{ fontSize: 10, opacity: 0.6, marginLeft: 4 }}>
@@ -280,7 +291,7 @@ export default function LibraryPage() {
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
                           {overview.moduleFolders.map(f => (
-                            <ModuleCard key={f.id} folder={f} onClick={() => drillIntoFolder(f.path)} />
+                            <ModuleCard key={f.id} folder={f} onClick={() => drillIntoFolder(f.path, f.id)} />
                           ))}
                         </div>
                       </div>
@@ -302,6 +313,7 @@ export default function LibraryPage() {
               {system && content_type && <span style={{ color: 'var(--text-3)' }}>›</span>}
               {content_type && <span style={{ fontSize: 13, color: 'var(--text-1)' }}>{content_type}</span>}
               {folder && <span style={{ fontSize: 13, color: 'var(--text-1)', fontFamily: 'monospace' }}>{folder.split('/').pop()}</span>}
+              {module_folder_id && <span style={{ fontSize: 13, color: 'var(--amber-hi)' }}>⚔ {overview?.moduleFolders?.find(f => f.id === module_folder_id)?.name || 'Module'}</span>}
               {unsorted && <span style={{ fontSize: 13, color: 'var(--amber-hi)' }}>⚠ Unsorted</span>}
               <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-3)' }}>{total} item{total !== 1 ? 's' : ''}</span>
               <select value={sort} onChange={e => updateParam('sort', e.target.value)} style={{ width: 'auto', fontSize: 12 }}>
@@ -318,7 +330,7 @@ export default function LibraryPage() {
                 <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-2)', marginBottom: 10, fontFamily: 'var(--font-display)' }}>Module Folders</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10, marginBottom: 20 }}>
                   {overview.moduleFolders.map(f => (
-                    <ModuleCard key={f.id} folder={f} onClick={() => drillIntoFolder(f.path)} />
+                    <ModuleCard key={f.id} folder={f} onClick={() => drillIntoFolder(f.path, f.id)} />
                   ))}
                 </div>
               </div>
@@ -334,8 +346,22 @@ export default function LibraryPage() {
                 <div style={{ fontSize: 16, color: 'var(--text-2)' }}>No items here</div>
               </div>
             ) : (
+              {/* Legend for module view */}
+              {module_folder_id && items.some(i => i.is_affiliated) && (
+                <div style={{ display: 'flex', gap: 16, marginBottom: 12, fontSize: 11, color: 'var(--text-3)', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 500, color: 'var(--text-2)' }}>Key:</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ width: 12, height: 12, borderRadius: 2, background: 'var(--bg-2)', border: '1px solid var(--border)', display: 'inline-block' }} />
+                    In module folder
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ width: 12, height: 12, borderRadius: 2, background: 'rgba(200,136,42,0.06)', border: '1px solid rgba(200,136,42,0.35)', borderLeft: '3px solid var(--amber)', display: 'inline-block' }} />
+                    Affiliated — lives elsewhere
+                  </span>
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 16 }}>
-                {items.map(item => <BookCard key={item.id} item={item} />)}
+                {items.map(item => <BookCard key={item.id} item={item} affiliated={!!item.is_affiliated && !item.in_folder} />)}
               </div>
             )}
 
