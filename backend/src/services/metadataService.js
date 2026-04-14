@@ -116,8 +116,18 @@ async function searchGoogleBooks(query, isIsbn = false) {
 // ── Public search (used by manual metadata editor) ─────────
 export async function fetchMetadataByTitle(title) {
   const results = [];
-  try { results.push(...await searchOpenLibrary(title)); } catch (e) { logger.warn('Metadata', 'OpenLibrary search failed', { error: e.message }); }
-  try { results.push(...await searchGoogleBooks(title)); } catch (e) { logger.warn('Metadata', 'Google Books search failed', { error: e.message }); }
+  try {
+    const ol = await searchOpenLibrary(title);
+    logger.debug('Metadata', 'OpenLibrary results', { title, count: ol.length });
+    if (ol.length === 0) logger.warn('Metadata', 'OpenLibrary returned 0 results', { title });
+    results.push(...ol);
+  } catch (e) { logger.warn('Metadata', 'OpenLibrary search failed', { error: e.message }); }
+  try {
+    const gb = await searchGoogleBooks(title);
+    logger.debug('Metadata', 'Google Books results', { title, count: gb.length });
+    if (gb.length === 0) logger.warn('Metadata', 'Google Books returned 0 results', { title });
+    results.push(...gb);
+  } catch (e) { logger.warn('Metadata', 'Google Books search failed', { error: e.message }); }
   return results;
 }
 

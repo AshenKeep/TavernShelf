@@ -134,14 +134,17 @@ export default function MetadataEditor({ item, onClose, onSave }) {
     } catch (e) { console.error('Lock save failed:', e.message); }
   };
 
+  const [searchRan, setSearchRan] = useState(false);
+
   const handleSearch = async () => {
-    setSearching(true); setError('');
+    setSearching(true); setError(''); setSearchRan(false);
     try {
       const results = activeSearch === 'isbn' && isbnQuery
         ? await post(`/library/items/${item.id}/metadata/search-isbn`, { isbn: isbnQuery })
         : await post(`/library/items/${item.id}/metadata/search`, { query: searchQuery });
-      setSearchResults(results);
-    } catch (e) { setError(e.message); }
+      setSearchResults(Array.isArray(results) ? results : []);
+      setSearchRan(true);
+    } catch (e) { setError('Search failed: ' + e.message); }
     finally { setSearching(false); }
   };
 
@@ -157,7 +160,7 @@ export default function MetadataEditor({ item, onClose, onSave }) {
         : [...new Set([...f.tags.split(',').map(t=>t.trim()), ...(result.tags||[])].filter(Boolean))].join(', '),
     }));
     if (result.coverUrl && !lockedFields.includes('cover')) setCoverUrl(result.coverUrl);
-    setSearchResults([]);
+    setSearchResults([]); setSearchRan(false);
   };
 
   const handleExtractCover = async () => {
@@ -334,6 +337,11 @@ export default function MetadataEditor({ item, onClose, onSave }) {
               {searching ? <span className="spinner" style={{ width:13, height:13 }}/> : 'Search'}
             </button>
           </div>
+          {searchRan && searchResults.length === 0 && !searching && (
+            <div style={{ marginTop:8, fontSize:12, color:'var(--text-3)', padding:'6px 0' }}>
+              No results found — try a different search term or check the book title
+            </div>
+          )}
           {searchResults.length > 0 && (
             <div style={{ marginTop:10, display:'flex', flexDirection:'column', gap:6, maxHeight:220, overflow:'auto' }}>
               {searchResults.map((r,i) => (

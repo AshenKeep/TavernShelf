@@ -58,9 +58,13 @@ function LogsTab({ token }) {
     const next = logLevel === 'debug' ? 'info' : 'debug';
     setTogglingLevel(true);
     try {
-      await put('/admin/settings', { 'log.level': next });
-      setLogLevel(next);
-    } catch {}
+      const result = await put('/admin/settings', { 'log.level': next });
+      // Confirm from the backend response what level was actually set
+      setLogLevel(result?.logLevel || next);
+    } catch (e) {
+      console.error('Failed to set log level:', e.message);
+      alert('Failed to set log level: ' + e.message);
+    }
     setTogglingLevel(false);
   };
 
@@ -98,6 +102,12 @@ function LogsTab({ token }) {
           Auto-scroll
         </label>
         <button className="btn btn-ghost btn-sm" onClick={() => setLines([])}>Clear</button>
+        <button className="btn btn-ghost btn-sm" onClick={async () => {
+          try {
+            const result = await get('/admin/logs/recent');
+            alert(`Log dir: ${result.logDir}\nLines in file: ${result.count}\n\nLast 3 lines:\n${result.lines.slice(-3).join('\n')}`);
+          } catch(e) { alert('Error: ' + e.message); }
+        }}>🔍 Test</button>
         {/* Log level toggle */}
         <button
           className={`btn btn-sm ${logLevel === 'debug' ? 'btn-primary' : 'btn-ghost'}`}

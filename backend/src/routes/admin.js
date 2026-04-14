@@ -217,6 +217,13 @@ router.get('/logs', requireAuth, requireRole('admin'), (req, res) => {
   res.json(listLogFiles());
 });
 
+
+// GET /api/admin/logs/recent — return recent log lines as JSON (for debugging)
+router.get('/logs/recent', requireAuth, requireRole('admin'), (req, res) => {
+  const lines = readRecentLogs(50);
+  res.json({ count: lines.length, logDir: getLogDir(), lines });
+});
+
 // ── Logs: SSE live tail ───────────────────────────────────────────────
 router.get('/logs/stream', async (req, res) => {
   // EventSource cannot set Authorization headers, so we accept token via query param
@@ -232,13 +239,17 @@ router.get('/logs/stream', async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
-  const recent = readRecentLogs(100);
+  // Send a test heartbeat immediately so the client knows the stream is live
+  res.write(`data: ${JSON.stringify({ ts: new Date().toISOString(), level: 'INFO', category: 'Logs', message: 'Log stream connected' })}\n\n`);
+
+  const recent = readRecentLogs(200);
   for (const line of recent) {
-    res.write(`data: ${line}\n\n`);
+    // Strip trailing newline — line has \n appended from logger, avoid triple-newline in SSE
+    res.write(`data: ${line.trimEnd()}\n\n`);
   }
 
   const unsub = subscribeLogs((line) => {
-    res.write(`data: ${line}\n\n`);
+    res.write(`data: ${line.trimEnd()}\n\n`);
   });
 
   const ping = setInterval(() => res.write(': ping\n\n'), 15000);

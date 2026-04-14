@@ -155,7 +155,9 @@ router.post('/items/:id/metadata/search', requireAuth, requireRole('admin'), asy
     const db = await getDb();
     const item = await dbGet(db, 'SELECT title FROM library_items WHERE id = $1', [req.params.id]);
     if (!item) return res.status(404).json({ error: 'Not found' });
-    const results = await fetchMetadataByTitle(req.body.query || item.title);
+    const query = req.body.query || item.title;
+    const results = await fetchMetadataByTitle(query);
+    logger.debug('Library', 'Metadata search results', { query, count: results.length });
     res.json(results);
   } catch (e) { console.error('[Library] Metadata search:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
@@ -186,7 +188,9 @@ router.post('/items/:id/metadata/search-isbn', requireAuth, requireRole('admin')
   try {
     const { isbn } = req.body;
     if (!isbn) return res.status(400).json({ error: 'isbn required' });
-    const results = await fetchMetadataByIsbn(isbn.replace(/[-\s]/g, ''));
+    const cleanIsbn = isbn.replace(/[-\s]/g, '');
+    const results = await fetchMetadataByIsbn(cleanIsbn);
+    logger.debug('Library', 'ISBN search results', { isbn: cleanIsbn, count: results.length });
     res.json(results);
   } catch (e) { console.error('[Library] ISBN search:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
