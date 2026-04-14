@@ -346,23 +346,25 @@ export default function LibraryPage() {
                 <div style={{ fontSize: 16, color: 'var(--text-2)' }}>No items here</div>
               </div>
             ) : (
-              {/* Legend for module view */}
-              {module_folder_id && items.some(i => i.is_affiliated) && (
-                <div style={{ display: 'flex', gap: 16, marginBottom: 12, fontSize: 11, color: 'var(--text-3)', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <span style={{ fontWeight: 500, color: 'var(--text-2)' }}>Key:</span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <span style={{ width: 12, height: 12, borderRadius: 2, background: 'var(--bg-2)', border: '1px solid var(--border)', display: 'inline-block' }} />
-                    In module folder
-                  </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <span style={{ width: 12, height: 12, borderRadius: 2, background: 'rgba(200,136,42,0.06)', border: '1px solid rgba(200,136,42,0.35)', borderLeft: '3px solid var(--amber)', display: 'inline-block' }} />
-                    Affiliated — lives elsewhere
-                  </span>
+              <>
+                {/* Legend for module view */}
+                {module_folder_id && items.some(i => i.is_affiliated) && (
+                  <div style={{ display: 'flex', gap: 16, marginBottom: 12, fontSize: 11, color: 'var(--text-3)', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 500, color: 'var(--text-2)' }}>Key:</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ width: 12, height: 12, borderRadius: 2, background: 'var(--bg-2)', border: '1px solid var(--border)', display: 'inline-block' }} />
+                      In module folder
+                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ width: 12, height: 12, borderRadius: 2, background: 'rgba(200,136,42,0.06)', border: '1px solid rgba(200,136,42,0.35)', borderLeft: '3px solid var(--amber)', display: 'inline-block' }} />
+                      Affiliated — lives elsewhere
+                    </span>
+                  </div>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 16 }}>
+                  {items.map(item => <BookCard key={item.id} item={item} affiliated={!!item.is_affiliated && !item.in_folder} />)}
                 </div>
-              )}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 16 }}>
-                {items.map(item => <BookCard key={item.id} item={item} affiliated={!!item.is_affiliated && !item.in_folder} />)}
-              </div>
+              </>
             )}
 
             {/* Pagination */}
