@@ -395,7 +395,11 @@ router.get('/overview', requireAuth, async (req, res) => {
       SELECT f.*,
         COUNT(DISTINCT CASE WHEN li.path LIKE f.path || '/%' THEN li.id
                             WHEN lim.item_id IS NOT NULL THEN lim.item_id
-                            ELSE NULL END) as item_count
+                            ELSE NULL END) as item_count,
+        array_agg(DISTINCT li.cover_path) FILTER (
+          WHERE li.cover_path IS NOT NULL AND li.cover_path != ''
+            AND li.path LIKE f.path || '/%'
+        ) as covers
       FROM folders f
       LEFT JOIN library_items li ON li.path LIKE f.path || '/%'
       LEFT JOIN library_item_modules lim ON lim.folder_id = f.id
@@ -420,7 +424,7 @@ router.get('/overview', requireAuth, async (req, res) => {
     res.json({
       systems:       Object.values(systems),
       unsortedCount: parseInt(unsorted?.n || 0),
-      moduleFolders: moduleFolders.map(f => ({ ...f, item_count: parseInt(f.item_count || 0) })),
+      moduleFolders: moduleFolders.map(f => ({ ...f, item_count: parseInt(f.item_count || 0), covers: (f.covers || []).filter(Boolean).slice(0, 4) })),
     });
   } catch (e) { console.error('[Library] Overview:', e.message); res.status(500).json({ error: 'Server error' }); }
 });

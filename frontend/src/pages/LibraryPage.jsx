@@ -40,23 +40,46 @@ function ContentTypeCard({ ct, system, onClick }) {
   );
 }
 
-// Module folder card
+// Module folder card — with cover collage
 function ModuleCard({ folder, onClick }) {
+  const covers = (folder.covers || []).slice(0, 4);
   return (
     <div onClick={onClick} style={{
       background: 'var(--bg-2)', border: '1px solid rgba(200,136,42,0.25)',
-      borderRadius: 'var(--radius-lg)', padding: '14px 16px', cursor: 'pointer',
-      transition: 'all 0.15s',
+      borderRadius: 'var(--radius-lg)', overflow: 'hidden', cursor: 'pointer',
+      transition: 'all 0.15s', display: 'flex', flexDirection: 'column',
     }}
-      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--amber)'; e.currentTarget.style.background = 'var(--bg-3)'; }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(200,136,42,0.25)'; e.currentTarget.style.background = 'var(--bg-2)'; }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--amber)'; e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.4)'; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(200,136,42,0.25)'; e.currentTarget.style.boxShadow = ''; }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-        <span style={{ fontSize: 16 }}>⚔</span>
-        <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-0)' }}>{folder.name}</span>
-        <span style={{ marginLeft: 'auto', fontSize: 10, background: 'rgba(200,136,42,0.15)', color: 'var(--amber)', padding: '1px 6px', borderRadius: 99 }}>Module</span>
+      {/* Cover collage */}
+      <div style={{ height: 120, background: 'var(--bg-3)', display: 'flex', overflow: 'hidden', position: 'relative' }}>
+        {covers.length === 0 && (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, color: 'var(--text-3)' }}>⚔</div>
+        )}
+        {covers.length === 1 && (
+          <img src={covers[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        )}
+        {covers.length === 2 && covers.map((c, i) => (
+          <img key={i} src={c} alt="" style={{ flex: 1, height: '100%', objectFit: 'cover', borderLeft: i > 0 ? '1px solid var(--bg-0)' : 'none' }} />
+        ))}
+        {covers.length >= 3 && (
+          <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', height: '100%' }}>
+            {covers.slice(0, 4).map((c, i) => (
+              <img key={i} src={c} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderLeft: i % 2 === 1 ? '1px solid var(--bg-0)' : 'none', borderTop: i >= 2 ? '1px solid var(--bg-0)' : 'none' }} />
+            ))}
+          </div>
+        )}
+        {/* Module badge overlay */}
+        <div style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)', borderRadius: 4, padding: '2px 7px', fontSize: 10, fontWeight: 600, color: 'var(--amber)', border: '1px solid rgba(200,136,42,0.4)' }}>
+          MODULE
+        </div>
       </div>
-      <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{folder.item_count || 0} file{(folder.item_count || 0) !== 1 ? 's' : ''}</div>
+      {/* Info */}
+      <div style={{ padding: '10px 14px' }}>
+        <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-0)', marginBottom: 2 }}>{folder.name}</div>
+        <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{folder.item_count || 0} file{(folder.item_count || 0) !== 1 ? 's' : ''}</div>
+      </div>
     </div>
   );
 }
@@ -324,19 +347,22 @@ export default function LibraryPage() {
               </select>
             </div>
 
-            {/* Module sub-folders if Adventure Module tab */}
-            {content_type === 'Adventure Module' && overview?.moduleFolders?.length > 0 && (
-              <div style={{ marginBottom: 24 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-2)', marginBottom: 10, fontFamily: 'var(--font-display)' }}>Module Folders</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10, marginBottom: 20 }}>
+            {/* Adventure Module tab: only show folder cards, no book grid */}
+            {content_type === 'Adventure Module' ? (
+              overview?.moduleFolders?.length > 0 ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
                   {overview.moduleFolders.map(f => (
                     <ModuleCard key={f.id} folder={f} onClick={() => drillIntoFolder(f.path, f.id)} />
                   ))}
                 </div>
-              </div>
-            )}
-
-            {gridLoading ? (
+              ) : (
+                <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-3)' }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>⚔</div>
+                  <div style={{ fontSize: 16, color: 'var(--text-2)' }}>No module folders yet</div>
+                  <div style={{ fontSize: 13, marginTop: 6 }}>Create module folders in the File Explorer tab</div>
+                </div>
+              )
+            ) : gridLoading ? (
               <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
                 <div className="spinner" style={{ width: 32, height: 32 }} />
               </div>
@@ -377,6 +403,7 @@ export default function LibraryPage() {
                   </button>
                 ))}
               </div>
+            )}
             )}
           </>
         )}
