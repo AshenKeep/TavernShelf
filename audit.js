@@ -78,6 +78,7 @@ for (const f of beFiles) {
   else pass(rel);
 }
 
+
 // ── 3. Frontend JSX checks ───────────────────────────────────────────────────
 console.log('\n── Frontend JSX ────────────────────────────────────────');
 const jsxDirs   = ['frontend/src/pages', 'frontend/src/components'];
