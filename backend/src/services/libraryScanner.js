@@ -70,10 +70,28 @@ async function walkDir(dirPath, db, foundPaths, stats) {
 }
 
 async function addItem(db, fullPath, relPath, stat, ext) {
-  const id = uuid();
   const filename = basename(fullPath);
-  const title = filename.replace(new RegExp(`\\.${ext}$`, 'i'), '').replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
   const fileType = FILE_TYPE_MAP[ext] || 'other';
+
+  // Check if a record with the same filename existed elsewhere (file was moved on disk)
+  // If so, carry its metadata over instead of starting from scratch
+  const orphan = await dbGet(db,
+    'SELECT * FROM library_items WHERE filename = $1 AND path != $2',
+    [filename, relPath]
+  );
+
+  if (orphan) {
+    // Update the path in the existing record — keep all metadata
+    await dbRun(db,
+      'UPDATE library_items SET path=$1, file_size=$2, updated_at=$3 WHERE id=$4',
+      [relPath, stat.size, now(), orphan.id]
+    );
+    logger.debug('Scanner', 'Moved item re-linked by filename', { from: orphan.path, to: relPath });
+    return;
+  }
+
+  const id = uuid();
+  const title = filename.replace(new RegExp(`\\.${ext}$`, 'i'), '').replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
 
   let coverPath = null;
   try { coverPath = await generateCover(fullPath, id, fileType); }
@@ -139,9 +157,17 @@ async function rebuildFolders(db) {
     const parentPath = dirname(path);
     const parentId = parentPath && parentPath !== '.' ? pathToId.get(parentPath) : null;
     await dbRun(db,
-      'INSERT INTO folders (id, path, name, parent_id, item_count, created_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (path) DO NOTHING',
+      `INSERT INTO folders (id, path, name, parent_id, item_count, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (path) DO UPDATE SET
+         name = EXCLUDED.name,
+         parent_id = EXCLUDED.parent_id,
+         item_count = EXCLUDED.item_count`,
       [id, path, name, parentId, folderCounts.get(path) || 0, now()]
     );
+    // Re-read the actual id in case it already existed
+    const existing = await dbGet(db, 'SELECT id FROM folders WHERE path = $1', [path]);
+    if (existing) pathToId.set(path, existing.id);
     pathToId.set(path, id);
   }
 

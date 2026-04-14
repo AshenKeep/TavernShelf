@@ -73,7 +73,8 @@ export default function MetadataEditor({ item, onClose, onSave }) {
 
   const [coverUrl, setCoverUrl]           = useState('');
   const [coverFetched, setCoverFetched]   = useState(null);
-  const [fetchingCover, setFetchingCover] = useState(false);
+  const [fetchingCover, setFetchingCover]   = useState(false);
+  const [extractingCover, setExtractingCover] = useState(false);
 
   const [saving, setSaving]               = useState(false);
   const [moduleModal, setModuleModal]     = useState(null); // { itemId, system }
@@ -157,6 +158,15 @@ export default function MetadataEditor({ item, onClose, onSave }) {
     }));
     if (result.coverUrl && !lockedFields.includes('cover')) setCoverUrl(result.coverUrl);
     setSearchResults([]);
+  };
+
+  const handleExtractCover = async () => {
+    setExtractingCover(true); setError('');
+    try {
+      const result = await post(`/library/items/${item.id}/cover/extract`);
+      if (result?.coverPath) setCoverFetched(result.coverPath);
+    } catch (e) { setError(`Cover extraction failed: ${e.message}`); }
+    finally { setExtractingCover(false); }
   };
 
   const handleFetchCover = async () => {

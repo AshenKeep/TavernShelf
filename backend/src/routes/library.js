@@ -485,6 +485,31 @@ router.put('/items/:id/modules', requireAuth, requireRole('admin'), async (req, 
   } catch (e) { logger.error('Library', 'Set item modules', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
 });
 
+
+// POST /api/library/items/:id/cover/extract — regenerate cover from file (PDF page 1 or CBZ first image)
+router.post('/items/:id/cover/extract', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const db = await getDb();
+    const item = await dbGet(db, 'SELECT * FROM library_items WHERE id = $1', [req.params.id]);
+    if (!item) return res.status(404).json({ error: 'Item not found' });
+
+    const { join: pjoin } = await import('path');
+    const { existsSync: pExists } = await import('fs');
+    const { LIBRARY_PATH: LP } = await import('../config.js');
+    const { generateCover } = await import('../services/coverService.js');
+
+    const absPath = pjoin(LP, item.path);
+    if (!pExists(absPath)) return res.status(404).json({ error: 'File not found on disk' });
+
+    const coverPath = await generateCover(absPath, item.id, item.file_type);
+    if (!coverPath) return res.status(422).json({ error: 'Could not extract cover from this file type' });
+
+    await dbRun(db, 'UPDATE library_items SET cover_path=$1, updated_at=$2 WHERE id=$3', [coverPath, Math.floor(Date.now()/1000), item.id]);
+    logger.debug('Library', 'Cover extracted from file', { id: item.id, coverPath });
+    res.json({ coverPath });
+  } catch (e) { logger.error('Library', 'Cover extract failed', { error: e.message }); res.status(500).json({ error: e.message }); }
+});
+
 // POST /api/library/scan
 router.post('/scan', requireAuth, requireRole('admin'), async (req, res) => {
   res.json({ message: 'Scan started' });
