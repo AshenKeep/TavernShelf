@@ -73,21 +73,27 @@ async function addItem(db, fullPath, relPath, stat, ext) {
   const filename = basename(fullPath);
   const fileType = FILE_TYPE_MAP[ext] || 'other';
 
-  // Check if a record with the same filename existed elsewhere (file was moved on disk)
-  // If so, carry its metadata over instead of starting from scratch
-  const orphan = await dbGet(db,
-    'SELECT * FROM library_items WHERE filename = $1 AND path != $2',
-    [filename, relPath]
+  // Check if a record with this filename AND file size existed elsewhere (file was moved on disk)
+  // Only re-link if there is exactly ONE match — avoids corrupting items with common filenames
+  const orphans = await dbAll(db,
+    'SELECT * FROM library_items WHERE filename = $1 AND file_size = $2 AND path != $3',
+    [filename, stat.size, relPath]
   );
 
-  if (orphan) {
-    // Update the path in the existing record — keep all metadata
-    await dbRun(db,
-      'UPDATE library_items SET path=$1, file_size=$2, updated_at=$3 WHERE id=$4',
-      [relPath, stat.size, now(), orphan.id]
-    );
-    logger.debug('Scanner', 'Moved item re-linked by filename', { from: orphan.path, to: relPath });
-    return;
+  if (orphans.length === 1) {
+    const orphan = orphans[0];
+    // Verify the old path no longer exists on disk — confirms it was a move, not a duplicate
+    const { existsSync } = await import('fs');
+    const { join: pjoin } = await import('path');
+    const { LIBRARY_PATH: LP } = await import('../config.js');
+    if (!existsSync(pjoin(LP, orphan.path))) {
+      await dbRun(db,
+        'UPDATE library_items SET path=$1, updated_at=$2 WHERE id=$3',
+        [relPath, now(), orphan.id]
+      );
+      logger.debug('Scanner', 'Moved item re-linked by filename+size', { from: orphan.path, to: relPath });
+      return;
+    }
   }
 
   const id = uuid();

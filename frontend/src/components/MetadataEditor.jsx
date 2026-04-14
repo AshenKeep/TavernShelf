@@ -367,6 +367,18 @@ export default function MetadataEditor({ item, onClose, onSave }) {
                   {fetchingCover ? <span className="spinner" style={{ width:12, height:12 }}/> : 'Apply'}
                 </button>
               </div>
+              {canWriteToFile && (
+                <div style={{ marginTop:6, display:'flex', alignItems:'center', gap:8 }}>
+                  <button className="btn btn-ghost btn-sm" onClick={handleExtractCover} disabled={extractingCover}>
+                    {extractingCover
+                      ? <><span className="spinner" style={{ width:11, height:11 }}/> Extracting…</>
+                      : '📄 Extract from file'}
+                  </button>
+                  <span style={{ fontSize:11, color:'var(--text-3)' }}>
+                    {item.file_type === 'pdf' ? 'Use first page of PDF as cover' : 'Use first image of CBZ as cover'}
+                  </span>
+                </div>
+              )}
               {coverFetched && <div style={{ fontSize:11, color:'var(--green-hi)', marginTop:4 }}>✓ Cover applied</div>}
             </div>
             {(coverFetched||item.cover_path) && (
@@ -393,13 +405,53 @@ export default function MetadataEditor({ item, onClose, onSave }) {
             <span style={{ fontFamily:'monospace', color:'var(--text-2)', fontSize:11, wordBreak:'break-all', flex:1 }}>{item.path}</span>
           </div>
 
-          {/* If already physically in a module — show it */}
+          {/* If already physically in a module — show it with change/remove options */}
           {currentModulePath ? (
-            <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', background:'rgba(200,136,42,0.08)', border:'1px solid rgba(200,136,42,0.25)', borderRadius:7, marginBottom: moduleFolders.filter(m => m.path !== currentModulePath).length > 0 ? 12 : 0 }}>
-              <span style={{ fontSize:13 }}>⚔</span>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:13, color:'var(--amber-hi)', fontWeight:500 }}>In module: {moduleFolders.find(m => m.path === currentModulePath)?.name || currentModulePath}</div>
-                <div style={{ fontSize:10, color:'var(--text-3)', marginTop:2 }}>Content type is a tag — file stays here. Use Affiliated Modules below to also show it in other modules.</div>
+            <div style={{ marginBottom: moduleFolders.filter(m => m.path !== currentModulePath).length > 0 ? 12 : 0 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', background:'rgba(200,136,42,0.08)', border:'1px solid rgba(200,136,42,0.25)', borderRadius:7, marginBottom:8 }}>
+                <span style={{ fontSize:13 }}>⚔</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:13, color:'var(--amber-hi)', fontWeight:500 }}>In module: {moduleFolders.find(m => m.path === currentModulePath)?.name || currentModulePath}</div>
+                  <div style={{ fontSize:10, color:'var(--text-3)', marginTop:2 }}>Content type is a tag — file physically lives here</div>
+                </div>
+              </div>
+              {/* Change module or move out */}
+              <div style={{ paddingLeft:8, display:'flex', flexDirection:'column', gap:8 }}>
+                <div>
+                  <label style={{ display:'block', fontSize:12, color:'var(--text-2)', marginBottom:5 }}>Move to a different module or folder</label>
+                  <div style={{ display:'flex', gap:8 }}>
+                    <select value={moveModuleId} onChange={e => { setMoveModuleId(e.target.value); setMoveSubfolderId(''); }}
+                      style={{ fontFamily:'monospace', fontSize:12, flex:1 }}>
+                      <option value="">— Select destination —</option>
+                      <optgroup label="Module Folders">
+                        {moduleFolders.filter(m => m.path !== currentModulePath).map(m => (
+                          <option key={m.id} value={m.id}>{m.path}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Library Folders (move out of module)">
+                        {allFolders.filter(f => !moduleFolders.some(m => f.path === m.path || f.path.startsWith(m.path + '/'))).map(f => (
+                          <option key={f.id} value={'folder:' + f.path}>{'↪ '.repeat(f.depth)}{f.name}</option>
+                        ))}
+                      </optgroup>
+                    </select>
+                    <button type="button" className="btn btn-primary btn-sm" disabled={!moveModuleId || movingToModule}
+                      onClick={async () => {
+                        setMovingToModule(true); setError('');
+                        try {
+                          let targetFolder;
+                          if (moveModuleId.startsWith('folder:')) {
+                            targetFolder = moveModuleId.replace('folder:', '');
+                          } else {
+                            targetFolder = moveSubfolderId || moduleFolders.find(m => m.id === moveModuleId)?.path;
+                          }
+                          await post(`/library/items/${item.id}/move`, { targetFolder });
+                          window.location.reload();
+                        } catch(e) { setError(e.message); setMovingToModule(false); }
+                      }}>
+                      {movingToModule ? <span className="spinner" style={{ width:12, height:12 }}/> : 'Move'}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           ) : (
