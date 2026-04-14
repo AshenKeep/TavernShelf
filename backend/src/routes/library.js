@@ -60,10 +60,22 @@ router.get('/items', requireAuth, async (req, res) => {
         ORDER BY ${orderBy}
       `, [module_folder_id, folder_row.path + '/%']);
 
+      // Also return direct subfolders of this module so the UI can show them as folder cards
+      const subfolders = await dbAll(db, `
+        SELECT f.*, COUNT(li.id) as item_count,
+          array_agg(li.cover_path) FILTER (WHERE li.cover_path IS NOT NULL AND li.cover_path != '') as covers
+        FROM folders f
+        LEFT JOIN library_items li ON li.path LIKE f.path || '/%'
+        WHERE f.parent_id = $1
+        GROUP BY f.id
+        ORDER BY f.name
+      `, [module_folder_id]);
+
       const allItems = [...physicalItems, ...affiliatedItems];
       return res.json({
         items: allItems.map(i => ({ ...parseItem(i), in_folder: !!i.in_folder, is_affiliated: !!i.is_affiliated })),
         total: allItems.length, page: 1, limit: allItems.length, pages: 1,
+        subfolders: subfolders.map(f => ({ ...f, item_count: parseInt(f.item_count||0), covers: (f.covers||[]).filter(Boolean).slice(0,4) })),
       });
     }
 

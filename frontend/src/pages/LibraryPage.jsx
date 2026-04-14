@@ -103,6 +103,7 @@ export default function LibraryPage() {
 
   // Grid data (when drilled into content type)
   const [items, setItems]         = useState([]);
+  const [subfolders, setSubfolders] = useState([]);
   const [total, setTotal]         = useState(0);
   const [pages, setPages]         = useState(1);
   const [gridLoading, setGridLoading] = useState(false);
@@ -143,7 +144,7 @@ export default function LibraryPage() {
     if (module_folder_id) params.module_folder_id = module_folder_id;
 
     get('/library/items', params)
-      .then(data => { setItems(data.items); setTotal(data.total); setPages(data.pages); })
+      .then(data => { setItems(data.items); setTotal(data.total); setPages(data.pages); setSubfolders(data.subfolders || []); })
       .catch(() => {})
       .finally(() => setGridLoading(false));
   }, [system, content_type, folder, page, sort, unsorted, module_folder_id]);
@@ -366,6 +367,56 @@ export default function LibraryPage() {
               <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
                 <div className="spinner" style={{ width: 32, height: 32 }} />
               </div>
+            ) : (subfolders.length > 0 || items.length === 0) && !gridLoading && subfolders.length > 0 ? (
+              <>
+                {/* Subfolders inside module */}
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>Folders</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: items.length > 0 ? 24 : 0 }}>
+                    {subfolders.map(sf => (
+                      <div key={sf.id} onClick={() => {
+                        setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('folder', sf.path); return n; });
+                      }} style={{
+                        background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8,
+                        overflow: 'hidden', cursor: 'pointer', transition: 'all 0.15s',
+                      }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--amber)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; }}
+                      >
+                        {/* Mini collage */}
+                        <div style={{ height: 80, background: 'var(--bg-3)', display: 'flex', overflow: 'hidden', position: 'relative' }}>
+                          {(sf.covers||[]).length === 0 && (
+                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, color: 'var(--text-3)' }}>📁</div>
+                          )}
+                          {(sf.covers||[]).length === 1 && (
+                            <img src={sf.covers[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          )}
+                          {(sf.covers||[]).length >= 2 && (
+                            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', height: '100%' }}>
+                              {sf.covers.slice(0,2).map((c,i) => (
+                                <img key={i} src={c} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderLeft: i > 0 ? '1px solid var(--bg-0)' : 'none' }} />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ padding: '8px 10px' }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-0)' }}>{sf.name}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{sf.item_count} file{sf.item_count !== 1 ? 's' : ''}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {/* Items below subfolders */}
+                {items.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 12, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>Files</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 16 }}>
+                      {items.map(item => <BookCard key={item.id} item={item} affiliated={!!item.is_affiliated && !item.in_folder} />)}
+                    </div>
+                  </>
+                )}
+              </>
             ) : items.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-3)' }}>
                 <div style={{ fontSize: 40, marginBottom: 12 }}>📚</div>

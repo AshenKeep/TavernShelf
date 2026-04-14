@@ -140,8 +140,26 @@ router.post('/:id/approve', requireAuth, requireRole('admin'), async (req, res) 
       ]);
     }
 
+    // For image files: generate cover immediately rather than waiting for scanner
+    // (scanner skips existing DB records so cover would never be generated otherwise)
+    if (fileType === 'image' && itemId) {
+      const { generateCover } = await import('../services/coverService.js');
+      const { LIBRARY_PATH: LP } = await import('../config.js');
+      const { join: pj } = await import('path');
+      setImmediate(async () => {
+        try {
+          const coverPath = await generateCover(pj(LP, relPath), itemId, 'image');
+          if (coverPath) {
+            const db2 = await getDb();
+            await dbRun(db2, 'UPDATE library_items SET cover_path=$1 WHERE id=$2', [coverPath, itemId]);
+            logger.debug('Upload', 'Cover generated for image upload', { itemId, coverPath });
+          }
+        } catch (e) { logger.warn('Upload', 'Cover generation failed for image', { error: e.message }); }
+      });
+    }
+
     logger.event('Upload', 'Upload approved', { title: item.title, by: req.user.email, dest: item.target_folder });
-    // Scan in background to pick up cover generation and folder counts
+    // Scan in background to pick up folder counts
     scanLibrary().catch(e => logger.error('Scanner', 'Post-approve scan failed', { error: e.message }));
     res.json({ message: 'Approved and added to library' });
   } catch (e) { logger.error('Upload', 'Approve error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
