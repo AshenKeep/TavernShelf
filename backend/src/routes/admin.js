@@ -4,7 +4,7 @@ import { mkdirSync, existsSync, createReadStream } from 'fs';
 import { join } from 'path';
 import { getDb, dbAll, dbRun, dbGet } from '../db/database.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
-import { logger, subscribeLogs, readRecentLogs, listLogFiles, getLogDir } from '../services/logger.js';
+import { logger, subscribeLogs, readRecentLogs, listLogFiles, getLogDir, setLogLevel, getLogLevel } from '../services/logger.js';
 import { getEmailSettings, saveEmailSettings, testEmailConnection } from '../services/emailService.js';
 import { LIBRARY_PATH, JWT_SECRET } from '../config.js';
 import { scanLibrary } from '../services/libraryScanner.js';

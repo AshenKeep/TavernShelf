@@ -7,7 +7,7 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 import { LIBRARY_PATH } from '../config.js';
 import { fetchMetadataByTitle, fetchMetadataByIsbn, applyMetadata, downloadCover } from '../services/metadataService.js';
 import { readFileMetadata, writeFileMetadata } from '../services/fileMetadataService.js';
-import { organiseItem, organiseAll, getMisplacedItems, getExpectedPath, getModulePath } from '../services/organiserService.js';
+import { organiseItem, organiseAll, getMisplacedItems, getExpectedPath, getModulePath, moveItem } from '../services/organiserService.js';
 import { scanLibrary } from '../services/libraryScanner.js';
 import { logger } from '../services/logger.js';
 
