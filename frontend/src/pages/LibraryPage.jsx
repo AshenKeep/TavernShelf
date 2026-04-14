@@ -61,12 +61,12 @@ function ModuleCard({ folder, onClick }) {
           <img src={covers[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         )}
         {covers.length === 2 && covers.map((c, i) => (
-          <img key={i} src={c} alt="" style={{ flex: 1, height: '100%', objectFit: 'cover', borderLeft: i > 0 ? '1px solid var(--bg-0)' : 'none' }} />
+          <img key={i} src={`${c}?v=${folder.updated_at||folder.id}`} alt="" style={{ flex: 1, height: '100%', objectFit: 'cover', borderLeft: i > 0 ? '1px solid var(--bg-0)' : 'none' }} />
         ))}
         {covers.length >= 3 && (
           <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', height: '100%' }}>
             {covers.slice(0, 4).map((c, i) => (
-              <img key={i} src={c} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderLeft: i % 2 === 1 ? '1px solid var(--bg-0)' : 'none', borderTop: i >= 2 ? '1px solid var(--bg-0)' : 'none' }} />
+              <img key={i} src={`${c}?v=${folder.updated_at||folder.id}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderLeft: i % 2 === 1 ? '1px solid var(--bg-0)' : 'none', borderTop: i >= 2 ? '1px solid var(--bg-0)' : 'none' }} />
             ))}
           </div>
         )}
@@ -403,7 +403,6 @@ export default function LibraryPage() {
                   </button>
                 ))}
               </div>
-            )}
             )}
           </>
         )}
