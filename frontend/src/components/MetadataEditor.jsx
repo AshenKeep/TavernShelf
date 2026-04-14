@@ -353,19 +353,65 @@ export default function MetadataEditor({ item, onClose, onSave }) {
           </div>
         )}
 
-        {/* File location — read only, shows module membership */}
-        <div style={{ background:'var(--bg-3)', border:'1px solid var(--border)', borderRadius:8, padding:'10px 14px', marginBottom:14, fontSize:12 }}>
-          <div style={{ display:'flex', gap:8, alignItems:'flex-start' }}>
-            <span style={{ color:'var(--text-3)', minWidth:56, flexShrink:0, paddingTop:1 }}>Path</span>
+        {/* ── Module panel — always visible ── */}
+        <div style={{ background:'var(--bg-2)', border:'1px solid var(--border-md)', borderRadius:10, padding:16, marginBottom:14 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+            <span style={{ fontSize:14 }}>⚔</span>
+            <span style={{ fontSize:13, fontWeight:600, color:'var(--text-0)' }}>Adventure Modules</span>
+            <span style={{ fontSize:11, color:'var(--text-3)', marginLeft:4 }}>Tick which modules this file belongs to — it stays in its current location</span>
+            {affiliatedModules.length > 0 || currentModulePath ? (
+              <button type="button" className="btn btn-primary btn-sm" style={{ marginLeft:'auto', fontSize:11 }}
+                disabled={savingModules}
+                onClick={saveModules}>
+                {savingModules ? <span className="spinner" style={{ width:10, height:10 }} /> : 'Save'}
+              </button>
+            ) : null}
+          </div>
+
+          {/* File path */}
+          <div style={{ display:'flex', gap:8, alignItems:'flex-start', marginBottom:10, padding:'6px 8px', background:'var(--bg-3)', borderRadius:6 }}>
+            <span style={{ color:'var(--text-3)', fontSize:11, flexShrink:0, paddingTop:1 }}>Path</span>
             <span style={{ fontFamily:'monospace', color:'var(--text-2)', fontSize:11, wordBreak:'break-all', flex:1 }}>{item.path}</span>
           </div>
-          {currentModulePath && (
-            <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:6 }}>
-              <span style={{ color:'var(--text-3)', minWidth:56, flexShrink:0 }}>Module</span>
-              <span style={{ color:'var(--amber-hi)', background:'rgba(200,136,42,0.12)', border:'1px solid rgba(200,136,42,0.25)', borderRadius:4, padding:'1px 8px', fontSize:11 }}>
-                ⚔ {currentModulePath}
-              </span>
-              <span style={{ color:'var(--text-3)', fontSize:11 }}>Content type below is a tag — file stays here</span>
+
+          {moduleFolders.length === 0 ? (
+            <div style={{ fontSize:12, color:'var(--text-3)', padding:'8px 0' }}>
+              No module folders exist yet. Create them in{' '}
+              <a href="/files" style={{ color:'var(--amber-hi)', textDecoration:'underline' }}>File Explorer</a>
+              {' '}and mark them as Adventure Module folders.
+            </div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+              {moduleFolders.map(mf => {
+                const isPhysical   = currentModulePath === mf.path;
+                const isAffiliated = affiliatedModules.includes(mf.id);
+                const active       = isPhysical || isAffiliated;
+                return (
+                  <label key={mf.id} style={{
+                    display:'flex', alignItems:'center', gap:10, padding:'8px 10px',
+                    borderRadius:7, cursor: isPhysical ? 'default' : 'pointer',
+                    background: active ? 'rgba(200,136,42,0.1)' : 'var(--bg-3)',
+                    border:`1px solid ${active ? 'rgba(200,136,42,0.3)' : 'var(--border)'}`,
+                    transition:'all 0.1s',
+                  }}>
+                    <input type="checkbox"
+                      checked={active}
+                      disabled={isPhysical}
+                      onChange={() => !isPhysical && toggleAffiliation(mf.id)}
+                    />
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:13, color: active ? 'var(--amber-hi)' : 'var(--text-1)', fontWeight: active ? 500 : 400 }}>
+                        {mf.name}
+                      </div>
+                      <div style={{ fontSize:10, color:'var(--text-3)', fontFamily:'monospace', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {mf.path}
+                      </div>
+                    </div>
+                    {isPhysical   && <span className="badge badge-amber" style={{ fontSize:9 }}>Physical location</span>}
+                    {isAffiliated && !isPhysical && <span className="badge badge-gray"  style={{ fontSize:9 }}>Affiliated</span>}
+                  </label>
+                );
+              })}
             </div>
           )}
         </div>
@@ -446,33 +492,7 @@ export default function MetadataEditor({ item, onClose, onSave }) {
               <input value={form.isbn} onChange={f('isbn')} placeholder="ISBN-10 or ISBN-13" style={{ fontFamily:'monospace' }}/>
             </div>
 
-            {/* Module affiliation */}
-            {moduleFolders.length > 0 && (
-              <div style={{ gridColumn:'1/-1', marginTop:4 }}>
-                <div style={{ display:'flex', alignItems:'center', marginBottom:8, gap:8 }}>
-                  <label style={{ fontSize:12, color:'var(--text-2)', flex:1 }}>Module Affiliations</label>
-                  <span style={{ fontSize:11, color:'var(--text-3)' }}>File stays in its current folder — these are display tags only</span>
-                </div>
-                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                  {moduleFolders.map(mf => {
-                    const isPhysical = currentModulePath === mf.path;
-                    const isAffiliated = affiliatedModules.includes(mf.id);
-                    return (
-                      <label key={mf.id} style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, cursor: isPhysical ? 'default' : 'pointer', color: isPhysical ? 'var(--amber-hi)' : 'var(--text-1)', padding:'5px 8px', borderRadius:6, background: isAffiliated || isPhysical ? 'rgba(200,136,42,0.08)' : 'transparent', border:`1px solid ${isAffiliated || isPhysical ? 'rgba(200,136,42,0.25)' : 'transparent'}` }}>
-                        <input type="checkbox"
-                          checked={isAffiliated || isPhysical}
-                          disabled={isPhysical}
-                          onChange={() => !isPhysical && toggleAffiliation(mf.id)}
-                        />
-                        <span>⚔ {mf.name}</span>
-                        {isPhysical && <span style={{ fontSize:10, color:'var(--amber)', marginLeft:4 }}>— physical location</span>}
-                        {isAffiliated && !isPhysical && <span style={{ fontSize:10, color:'var(--text-3)', marginLeft:4 }}>— affiliated</span>}
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+
           </div>
 
           {/* Description */}
