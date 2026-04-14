@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { createReadStream, statSync, existsSync } from 'fs';
-import { join, extname } from 'path';
+import { join, extname, basename } from 'path';
 import mime from 'mime-types';
 import { getDb, dbGet, dbRun, dbAll } from '../db/database.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
@@ -9,6 +9,7 @@ import { fetchMetadataByTitle, fetchMetadataByIsbn, applyMetadata, downloadCover
 import { readFileMetadata, writeFileMetadata } from '../services/fileMetadataService.js';
 import { organiseItem, organiseAll, getMisplacedItems, getExpectedPath, getModulePath } from '../services/organiserService.js';
 import { scanLibrary } from '../services/libraryScanner.js';
+import { logger } from '../services/logger.js';
 
 const router = Router();
 
@@ -397,12 +398,25 @@ router.post('/items/:id/move', requireAuth, requireRole('admin'), async (req, re
     const item = await dbGet(db, 'SELECT * FROM library_items WHERE id = $1', [req.params.id]);
     if (!item) return res.status(404).json({ error: 'Item not found' });
 
-    const { basename } = await import('path');
     const newRelPath = `${targetFolder}/${basename(item.path)}`;
+    logger.debug('Library', 'Move requested', {
+      id: item.id, title: item.title,
+      from: item.path, to: newRelPath, targetFolder,
+    });
+
+    const { existsSync } = await import('fs');
+    const { join: pathJoin } = await import('path');
+    const { LIBRARY_PATH: LP } = await import('../config.js');
+    const srcExists = existsSync(pathJoin(LP, item.path));
+    logger.debug('Library', 'Move source check', { path: item.path, exists: srcExists, absPath: pathJoin(LP, item.path) });
 
     const moved = await moveItem(db, item, newRelPath);
+    logger.debug('Library', 'Move complete', { from: item.path, to: moved.path });
     res.json(parseItem(moved));
-  } catch (e) { console.error('[Library] Move:', e.message); res.status(500).json({ error: 'Server error' }); }
+  } catch (e) {
+    logger.error('Library', 'Move failed', { error: e.message, stack: e.stack?.split('\n')[1]?.trim() });
+    res.status(500).json({ error: e.message || 'Server error' });
+  }
 });
 
 // POST /api/library/scan

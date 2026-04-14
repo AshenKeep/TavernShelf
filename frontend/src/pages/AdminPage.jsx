@@ -13,7 +13,7 @@ function formatDate(unix) {
 }
 
 const LEVEL_COLORS = {
-  ERROR: '#c03030', WARN: '#c88820', INFO: '#6a9a6a', EVENT: '#8a8aaa',
+  ERROR: '#c03030', WARN: '#c88820', INFO: '#6a9a6a', EVENT: '#8a8aaa', DEBUG: '#7a6a9a',
 };
 
 function LogLine({ raw }) {
@@ -37,17 +37,32 @@ function LogLine({ raw }) {
 }
 
 function LogsTab({ token }) {
-  const { get } = useApi();
+  const { get, put } = useApi();
   const [logFiles, setLogFiles] = useState([]);
   const [lines, setLines] = useState([]);
   const [connected, setConnected] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [logLevel, setLogLevel] = useState('info');
+  const [togglingLevel, setTogglingLevel] = useState(false);
   const bottomRef = useRef(null);
   const esRef = useRef(null);
 
   useEffect(() => {
     get('/admin/logs').then(setLogFiles).catch(() => {});
+    get('/admin/settings').then(s => {
+      if (s['log.level']) setLogLevel(s['log.level']);
+    }).catch(() => {});
   }, []);
+
+  const toggleLogLevel = async () => {
+    const next = logLevel === 'debug' ? 'info' : 'debug';
+    setTogglingLevel(true);
+    try {
+      await put('/admin/settings', { 'log.level': next });
+      setLogLevel(next);
+    } catch {}
+    setTogglingLevel(false);
+  };
 
   useEffect(() => {
     if (esRef.current) esRef.current.close();
@@ -83,6 +98,21 @@ function LogsTab({ token }) {
           Auto-scroll
         </label>
         <button className="btn btn-ghost btn-sm" onClick={() => setLines([])}>Clear</button>
+        {/* Log level toggle */}
+        <button
+          className={`btn btn-sm ${logLevel === 'debug' ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={toggleLogLevel}
+          disabled={togglingLevel}
+          title={logLevel === 'debug' ? 'Debug mode ON — click to turn off' : 'Click to enable verbose debug logging'}
+          style={{ gap: 6 }}>
+          <span style={{ fontSize: 13 }}>{logLevel === 'debug' ? '🔊' : '🔇'}</span>
+          {logLevel === 'debug' ? 'DEBUG ON' : 'DEBUG OFF'}
+        </button>
+        {logLevel === 'debug' && (
+          <span style={{ fontSize: 11, color: 'var(--amber-hi)', background: 'rgba(200,136,42,0.12)', border: '1px solid rgba(200,136,42,0.25)', borderRadius: 4, padding: '2px 8px' }}>
+            Verbose logging active — disable when done
+          </span>
+        )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
           <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Download:</span>
           {logFiles.map(f => (

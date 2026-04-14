@@ -12,7 +12,7 @@ import { v4 as uuid } from 'uuid';
 import { PORT, NODE_ENV, ADMIN_EMAIL, ADMIN_PASSWORD, TRUST_PROXY, COVERS_PATH } from './config.js';
 import { getDb, dbGet, dbRun } from './db/database.js';
 import { scanLibrary } from './services/libraryScanner.js';
-import { logger } from './services/logger.js';
+import { logger, setLogLevel } from './services/logger.js';
 
 import authRoutes    from './routes/auth.js';
 import libraryRoutes from './routes/library.js';
@@ -99,6 +99,17 @@ process.on('uncaughtException', (err) => {
 
 async function start() {
   logger.info('Boot', 'TavernShelf v0.1.4 starting');
+
+  // Restore log level from DB settings (persists across restarts)
+  try {
+    const { getDb, dbGet } = await import('./db/database.js');
+    const db = await getDb();
+    const lvl = await dbGet(db, "SELECT value FROM settings WHERE key='log.level'");
+    if (lvl?.value) {
+      setLogLevel(lvl.value);
+      logger.info('Boot', `Log level restored: ${lvl.value}`);
+    }
+  } catch {}
   const db = await getDb();
 
   const existing = await dbGet(db, "SELECT id FROM users WHERE role = 'admin'");

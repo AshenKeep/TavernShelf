@@ -11,6 +11,17 @@ let currentDate = '';
 let writeStream = null;
 const subscribers = new Set();
 
+// Runtime log level — toggled via Admin → Logs without restart
+let _logLevel = 'info'; // 'info' | 'debug'
+
+export function setLogLevel(level) {
+  _logLevel = level === 'debug' ? 'debug' : 'info';
+}
+
+export function getLogLevel() {
+  return _logLevel;
+}
+
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -42,6 +53,9 @@ function rotateLogs() {
 }
 
 export function log(level, category, message, meta = {}) {
+  // Skip DEBUG entries when not in debug mode
+  if (level === 'DEBUG' && _logLevel !== 'debug') return;
+
   const entry = {
     ts: new Date().toISOString(),
     level,
@@ -61,6 +75,7 @@ export const logger = {
   warn:  (cat, msg, meta = {}) => log('WARN',  cat, msg, meta),
   error: (cat, msg, meta = {}) => log('ERROR', cat, msg, meta),
   event: (cat, msg, meta = {}) => log('EVENT', cat, msg, meta),
+  debug: (cat, msg, meta = {}) => log('DEBUG', cat, msg, meta),
 };
 
 export function subscribeLogs(fn) {

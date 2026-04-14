@@ -91,6 +91,14 @@ router.post('/:id/approve', requireAuth, requireRole('admin'), async (req, res) 
     // Use copy+delete instead of rename — rename fails across Docker volumes (EXDEV)
     const src = join(UPLOADS_PATH, item.filename);
     const dest = join(destFolder, safeFilename);
+    logger.debug('Upload', 'Approving — file paths', {
+      originalName: item.original_name,
+      safeFilename,
+      src,
+      dest,
+      destFolder,
+      targetFolder: item.target_folder,
+    });
     copyFileSync(src, dest);
     unlinkSync(src);
 
@@ -103,6 +111,10 @@ router.post('/:id/approve', requireAuth, requireRole('admin'), async (req, res) 
     // never treated as an unknown file by the scanner. metadata_source='upload'
     // prevents autoFetchMetadata from overwriting what the uploader specified.
     const relPath = join(item.target_folder, safeFilename).replace(/\\/g, '/');
+    logger.debug('Upload', 'Inserting into library_items', {
+      relPath, system: item.system, content_type: item.content_type,
+      title: item.title, fileType,
+    });
     const ext = item.filename.split('.').pop().toLowerCase();
     const { FILE_TYPE_MAP } = await import('../config.js');
     const fileType = FILE_TYPE_MAP[ext] || 'other';

@@ -311,9 +311,14 @@ router.put('/settings', requireAuth, requireRole('admin'), async (req, res) => {
         'INSERT INTO settings (key, value, updated_at) VALUES ($1,$2,$3) ON CONFLICT (key) DO UPDATE SET value=$2, updated_at=$3',
         [key, String(value), Math.floor(Date.now()/1000)]
       );
+      // Apply log level change immediately without restart
+      if (key === 'log.level') {
+        setLogLevel(value);
+        logger.info('Admin', `Log level set to ${value}`, { by: req.user.email });
+      }
     }
     logger.event('Admin', 'Settings updated', { keys: Object.keys(req.body), by: req.user.email });
-    res.json({ message: 'Settings saved' });
+    res.json({ message: 'Settings saved', logLevel: getLogLevel() });
   } catch (e) { logger.error('Admin', 'Save settings error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
 });
 
