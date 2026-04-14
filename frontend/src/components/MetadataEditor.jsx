@@ -84,6 +84,11 @@ export default function MetadataEditor({ item, onClose, onSave }) {
   const [moduleFolders, setModuleFolders]   = useState([]);
   const [affiliatedModules, setAffiliatedModules] = useState([]); // folder_id strings
   const [savingModules, setSavingModules]       = useState(false);
+  const [inModule, setInModule]                 = useState(false);
+  const [moveModuleId, setMoveModuleId]         = useState('');
+  const [moveSubfolderId, setMoveSubfolderId]   = useState('');
+  const [movingToModule, setMovingToModule]     = useState(false);
+  const [allFolders, setAllFolders]             = useState([]);
 
   const canWriteToFile = ['pdf','cbz'].includes(item.file_type);
 
@@ -95,6 +100,7 @@ export default function MetadataEditor({ item, onClose, onSave }) {
       const flat = [];
       const flatten = (nodes) => nodes.forEach(n => { flat.push(n); flatten(n.children || []); });
       flatten(tree);
+      setAllFolders(flat);
       const modules = flat.filter(f => f.is_module);
       setModuleFolders(modules);
       // Check if item.path starts with any module folder path
@@ -161,6 +167,20 @@ export default function MetadataEditor({ item, onClose, onSave }) {
       if (result?.coverPath) { item.cover_path = result.coverPath; setCoverFetched(result.coverPath); }
     } catch (e) { setError(`Cover fetch failed: ${e.message}`); }
     finally { setFetchingCover(false); }
+  };
+
+  const moveToModule = async () => {
+    if (!moveModuleId) return;
+    const targetFolder = moveSubfolderId || moduleFolders.find(m => m.id === moveModuleId)?.path;
+    if (!targetFolder) return;
+    setMovingToModule(true); setError('');
+    try {
+      await post(`/library/items/${item.id}/move`, { targetFolder });
+      // Also affiliate with the module
+      const newAffiliations = [...new Set([...affiliatedModules, moveModuleId])];
+      await put(`/library/items/${item.id}/modules`, { folderIds: newAffiliations });
+      window.location.reload();
+    } catch (e) { setError(e.message); setMovingToModule(false); }
   };
 
   const saveModules = async () => {
@@ -353,65 +373,136 @@ export default function MetadataEditor({ item, onClose, onSave }) {
           </div>
         )}
 
-        {/* ── Module panel — always visible ── */}
+        {/* ── Module panel ── */}
         <div style={{ background:'var(--bg-2)', border:'1px solid var(--border-md)', borderRadius:10, padding:16, marginBottom:14 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
-            <span style={{ fontSize:14 }}>⚔</span>
-            <span style={{ fontSize:13, fontWeight:600, color:'var(--text-0)' }}>Adventure Modules</span>
-            <span style={{ fontSize:11, color:'var(--text-3)', marginLeft:4 }}>Tick which modules this file belongs to — it stays in its current location</span>
-            {affiliatedModules.length > 0 || currentModulePath ? (
-              <button type="button" className="btn btn-primary btn-sm" style={{ marginLeft:'auto', fontSize:11 }}
-                disabled={savingModules}
-                onClick={saveModules}>
-                {savingModules ? <span className="spinner" style={{ width:10, height:10 }} /> : 'Save'}
-              </button>
-            ) : null}
-          </div>
+          <div style={{ fontSize:11, color:'var(--text-3)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:10 }}>File Location</div>
 
-          {/* File path */}
-          <div style={{ display:'flex', gap:8, alignItems:'flex-start', marginBottom:10, padding:'6px 8px', background:'var(--bg-3)', borderRadius:6 }}>
+          {/* Current path */}
+          <div style={{ display:'flex', gap:8, alignItems:'flex-start', marginBottom:12, padding:'6px 8px', background:'var(--bg-3)', borderRadius:6 }}>
             <span style={{ color:'var(--text-3)', fontSize:11, flexShrink:0, paddingTop:1 }}>Path</span>
             <span style={{ fontFamily:'monospace', color:'var(--text-2)', fontSize:11, wordBreak:'break-all', flex:1 }}>{item.path}</span>
           </div>
 
-          {moduleFolders.length === 0 ? (
-            <div style={{ fontSize:12, color:'var(--text-3)', padding:'8px 0' }}>
-              No module folders exist yet. Create them in{' '}
-              <a href="/files" style={{ color:'var(--amber-hi)', textDecoration:'underline' }}>File Explorer</a>
-              {' '}and mark them as Adventure Module folders.
+          {/* If already physically in a module — show it */}
+          {currentModulePath ? (
+            <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', background:'rgba(200,136,42,0.08)', border:'1px solid rgba(200,136,42,0.25)', borderRadius:7, marginBottom: moduleFolders.filter(m => m.path !== currentModulePath).length > 0 ? 12 : 0 }}>
+              <span style={{ fontSize:13 }}>⚔</span>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:13, color:'var(--amber-hi)', fontWeight:500 }}>In module: {moduleFolders.find(m => m.path === currentModulePath)?.name || currentModulePath}</div>
+                <div style={{ fontSize:10, color:'var(--text-3)', marginTop:2 }}>Content type is a tag — file stays here. Use Affiliated Modules below to also show it in other modules.</div>
+              </div>
             </div>
           ) : (
-            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-              {moduleFolders.map(mf => {
-                const isPhysical   = currentModulePath === mf.path;
-                const isAffiliated = affiliatedModules.includes(mf.id);
-                const active       = isPhysical || isAffiliated;
-                return (
-                  <label key={mf.id} style={{
-                    display:'flex', alignItems:'center', gap:10, padding:'8px 10px',
-                    borderRadius:7, cursor: isPhysical ? 'default' : 'pointer',
-                    background: active ? 'rgba(200,136,42,0.1)' : 'var(--bg-3)',
-                    border:`1px solid ${active ? 'rgba(200,136,42,0.3)' : 'var(--border)'}`,
-                    transition:'all 0.1s',
-                  }}>
-                    <input type="checkbox"
-                      checked={active}
-                      disabled={isPhysical}
-                      onChange={() => !isPhysical && toggleAffiliation(mf.id)}
-                    />
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontSize:13, color: active ? 'var(--amber-hi)' : 'var(--text-1)', fontWeight: active ? 500 : 400 }}>
-                        {mf.name}
-                      </div>
-                      <div style={{ fontSize:10, color:'var(--text-3)', fontFamily:'monospace', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                        {mf.path}
-                      </div>
+            /* Not in a module — offer to move it into one */
+            <div>
+              <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, color:'var(--text-1)', cursor:'pointer', marginBottom: inModule ? 12 : 0 }}>
+                <input type="checkbox" checked={inModule} onChange={e => { setInModule(e.target.checked); setMoveModuleId(''); setMoveSubfolderId(''); }} />
+                <span style={{ fontWeight:500 }}>This file belongs inside an Adventure Module folder</span>
+              </label>
+
+              {inModule && (
+                <div style={{ display:'flex', flexDirection:'column', gap:10, marginTop:4, paddingLeft:24 }}>
+                  {moduleFolders.length === 0 ? (
+                    <div style={{ fontSize:12, color:'var(--text-3)' }}>
+                      No module folders yet —{' '}
+                      <a href="/files" style={{ color:'var(--amber-hi)', textDecoration:'underline' }}>create one in File Explorer</a>
+                      {' '}first.
                     </div>
-                    {isPhysical   && <span className="badge badge-amber" style={{ fontSize:9 }}>Physical location</span>}
-                    {isAffiliated && !isPhysical && <span className="badge badge-gray"  style={{ fontSize:9 }}>Affiliated</span>}
-                  </label>
-                );
-              })}
+                  ) : (
+                    <>
+                      <div>
+                        <label style={{ display:'block', fontSize:12, color:'var(--text-2)', marginBottom:5 }}>
+                          Which module? *
+                          {form.system && <span style={{ color:'var(--text-3)', marginLeft:6, fontWeight:400 }}>(filtered by {form.system})</span>}
+                        </label>
+                        <select value={moveModuleId}
+                          onChange={e => { setMoveModuleId(e.target.value); setMoveSubfolderId(''); }}
+                          style={{ fontFamily:'monospace', fontSize:12 }}>
+                          <option value="">— Select module —</option>
+                          {moduleFolders
+                            .filter(m => !form.system || m.path.toLowerCase().startsWith(form.system.toLowerCase() + '/'))
+                            .map(m => <option key={m.id} value={m.id}>{m.path}</option>)
+                          }
+                        </select>
+                      </div>
+
+                      {moveModuleId && (() => {
+                        const selectedModule = moduleFolders.find(m => m.id === moveModuleId);
+                        const subfolders = selectedModule
+                          ? allFolders.filter(f => f.path.startsWith(selectedModule.path + '/') && f.path.split('/').length === selectedModule.path.split('/').length + 1)
+                          : [];
+                        return (
+                          <div>
+                            <label style={{ display:'block', fontSize:12, color:'var(--text-2)', marginBottom:5 }}>
+                              Subfolder <span style={{ color:'var(--text-3)', fontWeight:400 }}>optional</span>
+                            </label>
+                            {subfolders.length > 0 ? (
+                              <select value={moveSubfolderId} onChange={e => setMoveSubfolderId(e.target.value)} style={{ fontFamily:'monospace', fontSize:12 }}>
+                                <option value="">— Module root —</option>
+                                {subfolders.map(sf => <option key={sf.id} value={sf.path}>{sf.name}</option>)}
+                              </select>
+                            ) : (
+                              <div style={{ fontSize:11, color:'var(--text-3)' }}>No subfolders — file will go to module root</div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      {moveModuleId && (
+                        <>
+                          <div style={{ fontSize:11, color:'var(--text-3)', fontFamily:'monospace', padding:'4px 0' }}>
+                            → {moveSubfolderId || moduleFolders.find(m => m.id === moveModuleId)?.path}/
+                          </div>
+                          <button type="button" className="btn btn-primary btn-sm" style={{ alignSelf:'flex-start' }}
+                            disabled={movingToModule}
+                            onClick={moveToModule}>
+                            {movingToModule
+                              ? <><span className="spinner" style={{ width:12, height:12 }} /> Moving…</>
+                              : '⚔ Move into module'}
+                          </button>
+                          <div style={{ fontSize:11, color:'var(--text-3)' }}>
+                            The file will be physically moved. Content type ("{form.contentType}") stays as a tag so it appears in both the module view and the content type tab.
+                          </div>
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Affiliated modules — always shown if module folders exist */}
+          {moduleFolders.filter(m => m.path !== currentModulePath).length > 0 && (
+            <div style={{ marginTop:currentModulePath || inModule ? 14 : 8, borderTop: currentModulePath || inModule ? '1px solid var(--border)' : 'none', paddingTop: currentModulePath || inModule ? 12 : 0 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                <span style={{ fontSize:12, color:'var(--text-2)', fontWeight:500 }}>Also show in modules</span>
+                <span style={{ fontSize:11, color:'var(--text-3)' }}>file stays where it is — display tag only</span>
+                {affiliatedModules.length > 0 && (
+                  <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft:'auto', fontSize:11 }}
+                    disabled={savingModules} onClick={saveModules}>
+                    {savingModules ? <span className="spinner" style={{ width:10, height:10 }} /> : 'Save affiliations'}
+                  </button>
+                )}
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                {moduleFolders.filter(m => m.path !== currentModulePath).map(mf => {
+                  const isAffiliated = affiliatedModules.includes(mf.id);
+                  return (
+                    <label key={mf.id} style={{
+                      display:'flex', alignItems:'center', gap:8, padding:'6px 8px',
+                      borderRadius:6, cursor:'pointer',
+                      background: isAffiliated ? 'rgba(200,136,42,0.08)' : 'transparent',
+                      border:`1px solid ${isAffiliated ? 'rgba(200,136,42,0.2)' : 'transparent'}`,
+                    }}>
+                      <input type="checkbox" checked={isAffiliated}
+                        onChange={() => toggleAffiliation(mf.id)} />
+                      <span style={{ fontSize:12, color: isAffiliated ? 'var(--amber-hi)' : 'var(--text-2)' }}>{mf.name}</span>
+                      <span style={{ fontSize:10, color:'var(--text-3)', fontFamily:'monospace' }}>{mf.path}</span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>

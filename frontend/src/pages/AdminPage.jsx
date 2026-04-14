@@ -622,7 +622,7 @@ function SuggestionsTab() {
                 <select value={editing.folder_id || ''} onChange={fe('folder_id')} style={{ fontFamily: 'monospace', fontSize: 12 }}>
                   <option value="">— None —</option>
                   {folders.filter(f => f.is_module).map(f => (
-                    <option key={f.id} value={f.id}>{'·  '.repeat(f.depth)}{f.name} ({f.path})</option>
+                    <option key={f.id} value={f.id}>{'↪ '.repeat(f.depth)}{f.name} ({f.path})</option>
                   ))}
                 </select>
               </div>

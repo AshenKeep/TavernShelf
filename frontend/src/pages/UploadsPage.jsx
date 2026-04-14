@@ -31,7 +31,7 @@ function FolderPicker({ folders, value, onChange, placeholder = '— Select a fo
       )}
       {folders.map(f => (
         <option key={f.id} value={f.path}>
-          {'·  '.repeat(f.depth)}{f.name}{f.item_count > 0 ? ` (${f.item_count})` : ''}
+          {'↪ '.repeat(f.depth)}{f.name}{f.item_count > 0 ? ` (${f.item_count})` : ''}
         </option>
       ))}
     </select>
