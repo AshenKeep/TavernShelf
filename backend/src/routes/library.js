@@ -42,14 +42,17 @@ router.get('/items', requireAuth, async (req, res) => {
       const folder_row = await dbGet(db, 'SELECT path FROM folders WHERE id = $1', [module_folder_id]);
       if (!folder_row) return res.status(404).json({ error: 'Module folder not found' });
 
+      // Only direct children of the module folder — files in subfolders
+      // appear when the user drills into that subfolder, not at the module root
       const physicalItems = await dbAll(db, `
         SELECT li.*, TRUE as in_folder, EXISTS(
           SELECT 1 FROM library_item_modules lim WHERE lim.item_id = li.id AND lim.folder_id = $1
         ) as is_affiliated
         FROM library_items li
         WHERE li.path LIKE $2
+          AND li.path NOT LIKE $3
         ORDER BY ${orderBy}
-      `, [module_folder_id, folder_row.path + '/%']);
+      `, [module_folder_id, folder_row.path + '/%', folder_row.path + '/%/%']);
 
       const affiliatedItems = await dbAll(db, `
         SELECT li.*, FALSE as in_folder, TRUE as is_affiliated

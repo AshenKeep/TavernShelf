@@ -240,12 +240,155 @@ function ScrollPage({ pdf, pageNum, scale }) {
 }
 
 /* ── Image Viewer ────────────────────────────────────────── */
-function ImageViewer({ url, token }) {
+function ImageViewer({ url }) {
+  const containerRef = useRef(null);
+  const imgRef       = useRef(null);
+  const [zoom, setZoom]         = useState(1);
+  const [pan, setPan]           = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [fullscreen, setFullscreen] = useState(false);
+  const [loaded, setLoaded]     = useState(false);
+  const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
+
+  // Fit image to container on load
+  const fitToContainer = useCallback(() => {
+    if (!containerRef.current || !imgRef.current) return;
+    const { clientWidth: cw, clientHeight: ch } = containerRef.current;
+    const { naturalWidth: iw, naturalHeight: ih } = imgRef.current;
+    if (!iw || !ih) return;
+    setNaturalSize({ w: iw, h: ih });
+    const fit = Math.min(cw / iw, ch / ih, 1);
+    setZoom(fit);
+    setPan({ x: 0, y: 0 });
+  }, []);
+
+  useEffect(() => { if (loaded) fitToContainer(); }, [loaded, fitToContainer]);
+
+  // Wheel zoom
+  const onWheel = useCallback(e => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.1 : 0.9;
+    setZoom(z => Math.max(0.1, Math.min(8, z * factor)));
+  }, []);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [onWheel]);
+
+  // Drag to pan
+  const onMouseDown = e => {
+    if (e.button !== 0) return;
+    setDragging(true);
+    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+  };
+  const onMouseMove = e => {
+    if (!dragging) return;
+    setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
+  };
+  const onMouseUp = () => setDragging(false);
+
+  // Touch pinch-to-zoom + drag
+  const lastTouchDist = useRef(null);
+  const onTouchStart = e => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      lastTouchDist.current = Math.hypot(dx, dy);
+    } else if (e.touches.length === 1) {
+      setDragging(true);
+      setDragStart({ x: e.touches[0].clientX - pan.x, y: e.touches[0].clientY - pan.y });
+    }
+  };
+  const onTouchMove = e => {
+    e.preventDefault();
+    if (e.touches.length === 2 && lastTouchDist.current) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      const factor = dist / lastTouchDist.current;
+      lastTouchDist.current = dist;
+      setZoom(z => Math.max(0.1, Math.min(8, z * factor)));
+    } else if (e.touches.length === 1 && dragging) {
+      setPan({ x: e.touches[0].clientX - dragStart.x, y: e.touches[0].clientY - dragStart.y });
+    }
+  };
+  const onTouchEnd = () => { setDragging(false); lastTouchDist.current = null; };
+
+  // Fullscreen
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen();
+      setFullscreen(true);
+    } else {
+      document.exitFullscreen();
+      setFullscreen(false);
+    }
+  };
+  useEffect(() => {
+    const handler = () => setFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
+  }, []);
+
+  const zoomIn  = () => setZoom(z => Math.min(8, z * 1.25));
+  const zoomOut = () => setZoom(z => Math.max(0.1, z / 1.25));
+  const reset   = () => fitToContainer();
+  const actual  = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
+
   return (
-    <div style={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 24, background: 'var(--bg-0)' }}>
-      <img src={url} alt="File"
-        style={{ maxWidth: '100%', boxShadow: '0 4px 32px rgba(0,0,0,0.6)' }}
-        onError={e => { e.target.style.display = 'none'; }} />
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-0)', overflow: 'hidden' }}>
+      {/* Toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderBottom: '1px solid var(--border)', background: 'var(--bg-1)', flexShrink: 0 }}>
+        <button className="btn btn-ghost btn-sm" onClick={zoomOut} title="Zoom out">−</button>
+        <span style={{ fontSize: 12, color: 'var(--text-2)', minWidth: 44, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
+        <button className="btn btn-ghost btn-sm" onClick={zoomIn} title="Zoom in">+</button>
+        <div style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 4px' }} />
+        <button className="btn btn-ghost btn-sm" onClick={reset} title="Fit to window">⊡ Fit</button>
+        <button className="btn btn-ghost btn-sm" onClick={actual} title="Actual size">1:1</button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+          {naturalSize.w > 0 && <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{naturalSize.w} × {naturalSize.h}px</span>}
+          <button className="btn btn-ghost btn-sm" onClick={toggleFullscreen} title={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
+            {fullscreen ? '⊠' : '⛶'}
+          </button>
+        </div>
+      </div>
+
+      {/* Canvas */}
+      <div ref={containerRef}
+        style={{ flex: 1, overflow: 'hidden', position: 'relative', cursor: dragging ? 'grabbing' : 'grab', userSelect: 'none' }}
+        onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp} onDoubleClick={reset}
+        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+      >
+        {!loaded && (
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span className="spinner" style={{ width: 32, height: 32 }} />
+          </div>
+        )}
+        <img ref={imgRef} src={url} alt="File"
+          onLoad={() => setLoaded(true)}
+          onError={e => { e.target.alt = 'Failed to load image'; }}
+          draggable={false}
+          style={{
+            position: 'absolute',
+            top: '50%', left: '50%',
+            transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px)) scale(${zoom})`,
+            transformOrigin: 'center center',
+            transition: dragging ? 'none' : 'transform 0.05s',
+            maxWidth: 'none',
+            boxShadow: '0 4px 40px rgba(0,0,0,0.7)',
+            display: loaded ? 'block' : 'none',
+          }}
+        />
+      </div>
+
+      {/* Keyboard hint */}
+      <div style={{ fontSize: 10, color: 'var(--text-3)', textAlign: 'center', padding: '4px 0', background: 'var(--bg-1)', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+        Scroll to zoom · Drag to pan · Double-click to reset
+      </div>
     </div>
   );
 }
