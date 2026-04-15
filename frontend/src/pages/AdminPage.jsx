@@ -961,6 +961,10 @@ export default function AdminPage() {
   const [scanning, setScanning]         = useState(false);
   const [editingUpload, setEditingUpload] = useState(null); // id of upload being edited
   const [uploadEditForm, setUploadEditForm] = useState({});
+  const [queueFolders, setQueueFolders]   = useState([]);
+  const [queueModules, setQueueModules]   = useState([]);
+  const [selectedIds, setSelectedIds]     = useState(new Set());
+  const [bulkApproving, setBulkApproving] = useState(false);
   const [scanMsg, setScanMsg]           = useState('');
   const [restoring, setRestoring]       = useState(false);
   const [restoreMsg, setRestoreMsg]     = useState('');
@@ -972,24 +976,55 @@ export default function AdminPage() {
   const loadStats   = () => get('/library/stats').then(setStats).catch(() => {});
 
   useEffect(() => { loadQueue(); loadStats(); }, []);
+  useEffect(() => {
+    if (tab === 'queue') {
+      get('/library/folders').then(data => {
+        const flat = data.folders || data || [];
+        setQueueFolders(flat);
+        setQueueModules(flat.filter(f => f.is_module));
+      }).catch(() => {});
+    }
+  }, [tab]);
   useEffect(() => { if (tab === 'invites') loadInvites(); }, [tab]);
 
   const approve = async (id) => { await post(`/uploads/${id}/approve`, {}); loadQueue(); appEvents.emit('uploadReviewed'); };
   const saveUploadEdit = async (id) => {
     const form = uploadEditForm;
     await put(`/uploads/${id}`, {
-      title:        form.title,
-      authors:      form.authors?.split(',').map(a => a.trim()).filter(Boolean),
-      description:  form.description,
-      system:       form.system,
-      content_type: form.content_type,
-      publisher:    form.publisher,
-      year:         form.year ? parseInt(form.year) : null,
-      tags:         form.tags?.split(',').map(t => t.trim()).filter(Boolean),
+      title:         form.title,
+      authors:       form.authors?.split(',').map(a => a.trim()).filter(Boolean),
+      description:   form.description,
+      system:        form.system,
+      content_type:  form.content_type,
+      publisher:     form.publisher,
+      year:          form.year ? parseInt(form.year) : null,
+      tags:          form.tags?.split(',').map(t => t.trim()).filter(Boolean),
+      target_folder: form.target_folder,
     });
     loadQueue();
     setEditingUpload(null);
+    setSelectedIds(new Set());
   };
+
+  const bulkApprove = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkApproving(true);
+    try {
+      await post('/uploads/bulk-approve', { ids: [...selectedIds] });
+      setSelectedIds(new Set());
+      loadQueue();
+    } catch (e) { console.error('Bulk approve failed:', e.message); }
+    finally { setBulkApproving(false); }
+  };
+
+  const toggleSelect = (id) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const selectAll = () => setSelectedIds(new Set(queue.map(i => i.id)));
+  const selectNone = () => setSelectedIds(new Set());
   const reject  = async () => {
     await post(`/uploads/${rejectId}/reject`, { reason: rejectReason });
     setRejectId(null); setRejectReason(''); loadQueue(); appEvents.emit('uploadReviewed');
@@ -1085,54 +1120,119 @@ export default function AdminPage() {
       {tab === 'queue' && (
         queue.length === 0
           ? <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-3)' }}>No pending uploads</div>
-          : <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {queue.map(item => (
-                <div key={item.id} className="card" style={{ padding: 16 }}>
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                    <div style={{ flex: 1, minWidth: 200 }}>
-                      <div style={{ fontWeight: 500, color: 'var(--text-0)', marginBottom: 4 }}>{item.title}</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 4 }}>{item.original_name} · {formatSize(item.file_size)} · {item.file_type?.toUpperCase()}</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-2)' }}>📁 {item.target_folder}</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>By <strong style={{ color: 'var(--text-2)' }}>{item.uploader_name}</strong> · {formatDate(item.created_at)}</div>
+          : <div>
+              {/* Bulk action bar */}
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14, padding:'10px 14px', background:'var(--bg-2)', borderRadius:8, border:'1px solid var(--border)' }}>
+                <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:13, cursor:'pointer' }}>
+                  <input type="checkbox"
+                    checked={selectedIds.size === queue.length && queue.length > 0}
+                    onChange={e => e.target.checked ? selectAll() : selectNone()}
+                  />
+                  {selectedIds.size > 0 ? `${selectedIds.size} selected` : 'Select all'}
+                </label>
+                {selectedIds.size > 0 && (
+                  <>
+                    <button className="btn btn-primary btn-sm" disabled={bulkApproving} onClick={bulkApprove}>
+                      {bulkApproving ? <span className="spinner" style={{ width:12, height:12 }}/> : `✓ Approve ${selectedIds.size}`}
+                    </button>
+                    <button className="btn btn-ghost btn-sm" onClick={selectNone}>Clear</button>
+                  </>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {queue.map(item => (
+                  <div key={item.id} className="card" style={{ padding: 16, border: selectedIds.has(item.id) ? '1px solid var(--amber)' : '' }}>
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                      <input type="checkbox" checked={selectedIds.has(item.id)}
+                        onChange={() => toggleSelect(item.id)}
+                        style={{ marginTop: 4, flexShrink: 0 }}
+                      />
+                      <div style={{ flex: 1, minWidth: 200 }}>
+                        <div style={{ fontWeight: 500, color: 'var(--text-0)', marginBottom: 4 }}>{item.title}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 4 }}>{item.original_name} · {formatSize(item.file_size)} · {item.file_type?.toUpperCase()}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-2)' }}>📁 {item.target_folder}</div>
+                        {item.system && <span className="badge badge-gray" style={{ fontSize:10, marginTop:4, marginRight:4 }}>{item.system}</span>}
+                        {item.content_type && <span className="badge badge-gray" style={{ fontSize:10, marginTop:4 }}>{item.content_type}</span>}
+                        <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>By <strong style={{ color: 'var(--text-2)' }}>{item.uploader_name}</strong> · {formatDate(item.created_at)}</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button className="btn btn-sm btn-ghost" onClick={() => {
+                          setEditingUpload(editingUpload === item.id ? null : item.id);
+                          setUploadEditForm({
+                            title: item.title,
+                            authors: (JSON.parse(item.authors||'[]')).join(', '),
+                            description: item.description||'',
+                            system: item.system||'',
+                            content_type: item.content_type||'',
+                            publisher: item.publisher||'',
+                            year: item.year||'',
+                            tags: (JSON.parse(item.tags||'[]')).join(', '),
+                            target_folder: item.target_folder||'',
+                          });
+                        }}>✎ Edit</button>
+                        <button className="btn btn-sm btn-primary" onClick={() => approve(item.id)}>✓ Approve</button>
+                        <button className="btn btn-sm btn-danger" onClick={() => { setRejectId(item.id); setRejectReason(''); }}>✗ Reject</button>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button className="btn btn-sm btn-ghost" onClick={() => {
-                        setEditingUpload(editingUpload === item.id ? null : item.id);
-                        setUploadEditForm({ title: item.title, authors: (JSON.parse(item.authors||'[]')).join(', '), description: item.description||'', system: item.system||'', content_type: item.content_type||'', publisher: item.publisher||'', year: item.year||'', tags: (JSON.parse(item.tags||'[]')).join(', ') });
-                      }}>✎ Edit</button>
-                      <button className="btn btn-sm btn-primary" onClick={() => approve(item.id)}>✓ Approve</button>
-                      <button className="btn btn-sm btn-danger" onClick={() => { setRejectId(item.id); setRejectReason(''); }}>✗ Reject</button>
-                    </div>
-                  </div>
-                  {rejectId === item.id && (
-                    <div style={{ marginTop: 12, display: 'flex', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-                      <input placeholder="Reason (optional)" value={rejectReason} onChange={e => setRejectReason(e.target.value)} style={{ flex: 1 }} />
-                      <button className="btn btn-sm btn-danger" onClick={reject}>Confirm</button>
-                      <button className="btn btn-sm btn-ghost" onClick={() => setRejectId(null)}>Cancel</button>
-                    </div>
-                  )}
-                  {editingUpload === item.id && (
-                    <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-                        {[['title','Title'],['authors','Authors (comma-sep)'],['system','System'],['content_type','Content Type'],['publisher','Publisher'],['year','Year'],['tags','Tags (comma-sep)']].map(([k,label]) => (
-                          <div key={k}>
-                            <label style={{ display:'block', fontSize:11, color:'var(--text-3)', marginBottom:3 }}>{label}</label>
-                            <input value={uploadEditForm[k]||''} onChange={e => setUploadEditForm(f=>({...f,[k]:e.target.value}))} style={{ fontSize:12 }} />
+                    {rejectId === item.id && (
+                      <div style={{ marginTop: 12, display: 'flex', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                        <input placeholder="Reason (optional)" value={rejectReason} onChange={e => setRejectReason(e.target.value)} style={{ flex: 1 }} />
+                        <button className="btn btn-sm btn-danger" onClick={reject}>Confirm</button>
+                        <button className="btn btn-sm btn-ghost" onClick={() => setRejectId(null)}>Cancel</button>
+                      </div>
+                    )}
+                    {editingUpload === item.id && (
+                      <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                          {[['title','Title'],['authors','Authors (comma-sep)'],['system','System'],['publisher','Publisher'],['year','Year'],['tags','Tags (comma-sep)']].map(([k,label]) => (
+                            <div key={k}>
+                              <label style={{ display:'block', fontSize:11, color:'var(--text-3)', marginBottom:3 }}>{label}</label>
+                              <input value={uploadEditForm[k]||''} onChange={e => setUploadEditForm(f=>({...f,[k]:e.target.value}))} style={{ fontSize:12 }} />
+                            </div>
+                          ))}
+                          <div>
+                            <label style={{ display:'block', fontSize:11, color:'var(--text-3)', marginBottom:3 }}>Content Type</label>
+                            <select value={uploadEditForm.content_type||''} onChange={e => setUploadEditForm(f=>({...f,content_type:e.target.value}))} style={{ fontSize:12 }}>
+                              <option value="">— Select —</option>
+                              {['Core Rulebook','Supplement','Adventure Module','Sourcebook','Bestiary','Campaign Setting','Magic Items','Pregen Characters','Battle Maps','Tokens','Encounter','Quick Reference','System Reference','Other'].map(t => (
+                                <option key={t} value={t}>{t}</option>
+                              ))}
+                            </select>
                           </div>
-                        ))}
-                        <div style={{ gridColumn:'1/-1' }}>
-                          <label style={{ display:'block', fontSize:11, color:'var(--text-3)', marginBottom:3 }}>Description</label>
-                          <textarea value={uploadEditForm.description||''} rows={2} style={{ resize:'vertical', fontSize:12 }} onChange={e => setUploadEditForm(f=>({...f,description:e.target.value}))} />
+                          <div style={{ gridColumn:'1/-1' }}>
+                            <label style={{ display:'block', fontSize:11, color:'var(--text-3)', marginBottom:3 }}>Description</label>
+                            <textarea value={uploadEditForm.description||''} rows={2} style={{ resize:'vertical', fontSize:12 }} onChange={e => setUploadEditForm(f=>({...f,description:e.target.value}))} />
+                          </div>
+                          <div style={{ gridColumn:'1/-1' }}>
+                            <label style={{ display:'block', fontSize:11, color:'var(--text-3)', marginBottom:3 }}>Target Folder</label>
+                            <select value={uploadEditForm.target_folder||''} onChange={e => setUploadEditForm(f=>({...f,target_folder:e.target.value}))} style={{ fontSize:12, fontFamily:'monospace' }}>
+                              <option value="">— Keep current: {item.target_folder} —</option>
+                              {queueModules.length > 0 && (
+                                <optgroup label="⚔ Module Folders">
+                                  {queueModules.map(m => (
+                                    <option key={m.id} value={m.path}>{'↪ '.repeat(m.depth)}{m.name}</option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              <optgroup label="Library Folders">
+                                {queueFolders.filter(f => !f.is_module).map(f => (
+                                  <option key={f.id} value={f.path}>{'↪ '.repeat(f.depth)}{f.name}</option>
+                                ))}
+                              </optgroup>
+                            </select>
+                          </div>
+                        </div>
+                        <div style={{ display:'flex', gap:8 }}>
+                          <button className="btn btn-primary btn-sm" onClick={() => saveUploadEdit(item.id)}>Save Changes</button>
+                          <button className="btn btn-ghost btn-sm" onClick={() => { setEditingUpload(null); approve(item.id); }}>Save &amp; Approve</button>
+                          <button className="btn btn-ghost btn-sm" onClick={() => setEditingUpload(null)}>Cancel</button>
                         </div>
                       </div>
-                      <div style={{ display:'flex', gap:8 }}>
-                        <button className="btn btn-primary btn-sm" onClick={() => saveUploadEdit(item.id)}>Save Changes</button>
-                        <button className="btn btn-ghost btn-sm" onClick={() => setEditingUpload(null)}>Cancel</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
       )}
 

@@ -53,6 +53,11 @@ export default function UploadsPage() {
   const [error, setError]         = useState('');
   const [success, setSuccess]     = useState('');
   const [suggestion, setSuggestion] = useState(null); // matched suggestion from rules
+  const [bulkFiles, setBulkFiles]   = useState([]);
+  const [bulkForm, setBulkForm]     = useState({ system:'', contentType:'', targetFolder:'', titlePrefix:'' });
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const [bulkResult, setBulkResult] = useState(null);
+  const bulkFileRef = useRef(null);
 
   const [form, setForm] = useState({
     system:          '',
@@ -209,7 +214,7 @@ export default function UploadsPage() {
       </h1>
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid var(--border)' }}>
-        {[['submit','Submit File'], ['queue','My Queue']].map(([key, label]) => (
+        {[['submit','Submit File'], ['bulk','Bulk Upload'], ['queue','My Queue']].map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)} style={{
             padding: '8px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer', border: 'none',
             background: 'transparent', borderBottom: tab === key ? '2px solid var(--amber)' : '2px solid transparent',
@@ -438,6 +443,97 @@ export default function UploadsPage() {
             {uploading ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Uploading {progress}%</> : 'Submit for Approval'}
           </button>
         </form>
+      )}
+
+      {tab === 'bulk' && (
+        <div style={{ maxWidth: 680 }}>
+          <div className="card" style={{ padding: 20, marginBottom: 16 }}>
+            <h3 style={{ fontFamily:'var(--font-display)', fontSize:15, color:'var(--text-0)', marginBottom:16 }}>Bulk Upload</h3>
+            <p style={{ fontSize:13, color:'var(--text-3)', marginBottom:16 }}>
+              Select multiple files. They'll all go to the same folder with the same system/content type.
+              Each file's title defaults to its filename — you can edit them individually after upload.
+            </p>
+
+            {/* Shared metadata */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
+              <div>
+                <label style={{ display:'block', fontSize:12, color:'var(--text-2)', marginBottom:5 }}>System</label>
+                <select value={bulkForm.system} onChange={e => setBulkForm(f=>({...f,system:e.target.value}))}>
+                  <option value="">— Any —</option>
+                  {TTRPG_SYSTEMS.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ display:'block', fontSize:12, color:'var(--text-2)', marginBottom:5 }}>Content Type</label>
+                <select value={bulkForm.contentType} onChange={e => setBulkForm(f=>({...f,contentType:e.target.value}))}>
+                  <option value="">— Any —</option>
+                  {CONTENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div style={{ gridColumn:'1/-1' }}>
+                <label style={{ display:'block', fontSize:12, color:'var(--text-2)', marginBottom:5 }}>Target Folder *</label>
+                <FolderPicker folders={folders} value={bulkForm.targetFolder} onChange={v => setBulkForm(f=>({...f,targetFolder:v}))} placeholder="— Select target folder —" />
+              </div>
+              <div>
+                <label style={{ display:'block', fontSize:12, color:'var(--text-2)', marginBottom:5 }}>Title Prefix <span style={{ color:'var(--text-3)', fontWeight:400 }}>optional</span></label>
+                <input value={bulkForm.titlePrefix} onChange={e => setBulkForm(f=>({...f,titlePrefix:e.target.value}))} placeholder="e.g. Curse of Strahd" />
+              </div>
+            </div>
+
+            {/* File picker */}
+            <div style={{ marginBottom:16 }}>
+              <input ref={bulkFileRef} type="file" multiple style={{ display:'none' }}
+                onChange={e => setBulkFiles([...e.target.files])} />
+              <button className="btn btn-ghost" onClick={() => bulkFileRef.current?.click()}>
+                📁 Choose Files ({bulkFiles.length > 0 ? `${bulkFiles.length} selected` : 'none'})
+              </button>
+            </div>
+
+            {/* File list preview */}
+            {bulkFiles.length > 0 && (
+              <div style={{ marginBottom:16, display:'flex', flexDirection:'column', gap:4, maxHeight:200, overflow:'auto' }}>
+                {bulkFiles.map((f,i) => (
+                  <div key={i} style={{ display:'flex', gap:8, fontSize:12, color:'var(--text-2)', padding:'4px 8px', background:'var(--bg-3)', borderRadius:4 }}>
+                    <span style={{ flex:1 }}>{f.name}</span>
+                    <span style={{ color:'var(--text-3)' }}>{(f.size/1024/1024).toFixed(1)} MB</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button className="btn btn-primary" disabled={bulkUploading || bulkFiles.length === 0 || !bulkForm.targetFolder}
+              onClick={async () => {
+                setBulkUploading(true); setBulkResult(null);
+                const fd = new FormData();
+                bulkFiles.forEach(f => fd.append('files', f));
+                fd.append('system', bulkForm.system);
+                fd.append('content_type', bulkForm.contentType);
+                fd.append('target_folder', bulkForm.targetFolder);
+                fd.append('title_prefix', bulkForm.titlePrefix);
+                try {
+                  const res = await fetch('/api/uploads/bulk', {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` },
+                    body: fd,
+                  });
+                  const data = await res.json();
+                  if (!res.ok) throw new Error(data.error);
+                  setBulkResult(data);
+                  setBulkFiles([]);
+                  if (bulkFileRef.current) bulkFileRef.current.value = '';
+                } catch (e) { setError(e.message); }
+                finally { setBulkUploading(false); }
+              }}>
+              {bulkUploading ? <><span className="spinner" style={{ width:14, height:14 }}/> Uploading…</> : `Upload ${bulkFiles.length} file${bulkFiles.length !== 1 ? 's' : ''}`}
+            </button>
+
+            {bulkResult && (
+              <div style={{ marginTop:12, padding:'10px 14px', background:'rgba(60,120,60,0.12)', border:'1px solid rgba(60,120,60,0.3)', borderRadius:8, fontSize:13, color:'var(--green-hi)' }}>
+                ✓ {bulkResult.uploaded} file{bulkResult.uploaded !== 1 ? 's' : ''} submitted for review — admin can approve them in the Upload Queue
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {tab === 'queue' && (
