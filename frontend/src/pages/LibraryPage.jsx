@@ -94,6 +94,7 @@ export default function LibraryPage() {
   const content_type    = searchParams.get('content_type') || '';
   const folder          = searchParams.get('folder') || '';
   const module_folder_id = searchParams.get('module_folder_id') || '';
+  const parent_module    = searchParams.get('parent_module') || '';
   const page            = parseInt(searchParams.get('page') || '1');
   const sort            = searchParams.get('sort') || 'title';
 
@@ -160,7 +161,19 @@ export default function LibraryPage() {
       return next;
     });
   };
-  const backToOverview = () => { setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('content_type'); n.delete('folder'); n.delete('unsorted'); n.delete('module_folder_id'); return n; }); };
+  const backToOverview = () => {
+    setSearchParams(prev => {
+      const n = new URLSearchParams(prev);
+      const parentModule = n.get('parent_module');
+      n.delete('content_type'); n.delete('folder'); n.delete('unsorted'); n.delete('module_folder_id'); n.delete('parent_module');
+      if (parentModule) {
+        // Go back to the parent module, not all the way to overview
+        n.set('content_type', 'Adventure Module');
+        n.set('module_folder_id', parentModule);
+      }
+      return n;
+    });
+  };
 
   // Tabs from overview content types
   const hasModules = (overview?.moduleFolders?.length > 0) ||
@@ -223,7 +236,7 @@ export default function LibraryPage() {
         {/* Modules tab */}
         {hasModules && (
           <TabButton
-            active={activeTab === 'Adventure Module' || activeTab === 'module'}
+            active={activeTab === 'Adventure Module' || activeTab === 'module' || !!parent_module}
             onClick={() => drillInto('Adventure Module')}>
             ⚔ Modules
             <span style={{ fontSize: 10, opacity: 0.6, marginLeft: 4 }}>
@@ -332,12 +345,18 @@ export default function LibraryPage() {
           <>
             {/* Breadcrumb + sort */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
-              <button className="btn btn-ghost btn-sm" onClick={backToOverview}>← Overview</button>
+              <button className="btn btn-ghost btn-sm" onClick={backToOverview}>
+                {searchParams.get('parent_module') ? '← Module' : '← Overview'}
+              </button>
               {system && <span style={{ fontSize: 13, color: 'var(--text-3)' }}>{system}</span>}
               {system && content_type && <span style={{ color: 'var(--text-3)' }}>›</span>}
               {content_type && <span style={{ fontSize: 13, color: 'var(--text-1)' }}>{content_type}</span>}
-              {module_folder_id && <span style={{ fontSize: 13, color: 'var(--amber-hi)' }}>⚔ {overview?.moduleFolders?.find(f => f.id === module_folder_id)?.name || 'Module'}</span>}
-              {module_folder_id && folder && <span style={{ color: 'var(--text-3)' }}>›</span>}
+              {(module_folder_id || parent_module) && (
+                <span style={{ fontSize: 13, color: 'var(--amber-hi)' }}>
+                  ⚔ {overview?.moduleFolders?.find(f => f.id === (module_folder_id || parent_module))?.name || 'Module'}
+                </span>
+              )}
+              {(module_folder_id || parent_module) && folder && <span style={{ color: 'var(--text-3)' }}>›</span>}
               {folder && <span style={{ fontSize: 13, color: 'var(--text-1)' }}>{folder.split('/').pop()}</span>}
               {unsorted && <span style={{ fontSize: 13, color: 'var(--amber-hi)' }}>⚠ Unsorted</span>}
               <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-3)' }}>{total} item{total !== 1 ? 's' : ''}</span>
@@ -376,8 +395,16 @@ export default function LibraryPage() {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: items.length > 0 ? 24 : 0 }}>
                     {subfolders.map(sf => (
                       <div key={sf.id} onClick={() => {
-                        setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('folder', sf.path); return n; });
-                        // module_folder_id stays in URL from prev
+                        setSearchParams(prev => {
+                          const n = new URLSearchParams(prev);
+                          // Switch to folder-only nav — module_folder_id branch ignores folder param
+                          // Keep parent_module so back button can return to the module
+                          const currentModuleId = n.get('module_folder_id');
+                          n.set('folder', sf.path);
+                          n.delete('module_folder_id');
+                          if (currentModuleId) n.set('parent_module', currentModuleId);
+                          return n;
+                        });
                       }} style={{
                         background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8,
                         overflow: 'hidden', cursor: 'pointer', transition: 'all 0.15s',
