@@ -336,8 +336,9 @@ export default function LibraryPage() {
               {system && <span style={{ fontSize: 13, color: 'var(--text-3)' }}>{system}</span>}
               {system && content_type && <span style={{ color: 'var(--text-3)' }}>›</span>}
               {content_type && <span style={{ fontSize: 13, color: 'var(--text-1)' }}>{content_type}</span>}
-              {folder && <span style={{ fontSize: 13, color: 'var(--text-1)', fontFamily: 'monospace' }}>{folder.split('/').pop()}</span>}
               {module_folder_id && <span style={{ fontSize: 13, color: 'var(--amber-hi)' }}>⚔ {overview?.moduleFolders?.find(f => f.id === module_folder_id)?.name || 'Module'}</span>}
+              {module_folder_id && folder && <span style={{ color: 'var(--text-3)' }}>›</span>}
+              {folder && <span style={{ fontSize: 13, color: 'var(--text-1)' }}>{folder.split('/').pop()}</span>}
               {unsorted && <span style={{ fontSize: 13, color: 'var(--amber-hi)' }}>⚠ Unsorted</span>}
               <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-3)' }}>{total} item{total !== 1 ? 's' : ''}</span>
               <select value={sort} onChange={e => updateParam('sort', e.target.value)} style={{ width: 'auto', fontSize: 12 }}>
@@ -376,6 +377,7 @@ export default function LibraryPage() {
                     {subfolders.map(sf => (
                       <div key={sf.id} onClick={() => {
                         setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('folder', sf.path); return n; });
+                        // module_folder_id stays in URL from prev
                       }} style={{
                         background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8,
                         overflow: 'hidden', cursor: 'pointer', transition: 'all 0.15s',

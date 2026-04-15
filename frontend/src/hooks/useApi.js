@@ -37,7 +37,7 @@ export function useApi() {
   // Stream URL for file reading — same origin, pass token as query param
   // because the browser fetch in PDF.js and CBZ readers handle auth headers
   // but <img> tags and direct links need the token in the URL
-  const streamUrl = (itemId) => `${BASE}/library/items/${itemId}/stream`;
+  const streamUrl = (itemId) => `${BASE}/library/items/${itemId}/stream${token ? '?token=' + token : ''}`;
 
   return { get, post, put, del, streamUrl, token };
 }

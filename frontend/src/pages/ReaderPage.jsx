@@ -243,7 +243,7 @@ function ScrollPage({ pdf, pageNum, scale }) {
 function ImageViewer({ url, token }) {
   return (
     <div style={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 24, background: 'var(--bg-0)' }}>
-      <img src={`${url}?t=${Date.now()}`} alt="File"
+      <img src={url} alt="File"
         style={{ maxWidth: '100%', boxShadow: '0 4px 32px rgba(0,0,0,0.6)' }}
         onError={e => { e.target.style.display = 'none'; }} />
     </div>
