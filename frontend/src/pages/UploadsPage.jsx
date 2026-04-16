@@ -585,6 +585,11 @@ export default function UploadsPage() {
               </div>
             )}
 
+            {error && (
+              <div style={{ marginBottom:12, padding:'10px 14px', background:'rgba(168,50,50,0.12)', border:'1px solid rgba(168,50,50,0.3)', borderRadius:8, color:'var(--red-hi)', fontSize:13 }}>
+                {error}
+              </div>
+            )}
             <button className="btn btn-primary" disabled={bulkUploading || bulkFiles.length === 0 || !bulkForm.targetFolder}
               onClick={async () => {
                 setBulkUploading(true); setBulkResult(null);

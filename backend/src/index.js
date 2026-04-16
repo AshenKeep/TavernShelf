@@ -121,7 +121,13 @@ async function start() {
     );
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  // Global error handler — catches multer errors (unsupported file type etc)
+app.use((err, req, res, next) => {
+  logger.error('Server', 'Unhandled error', { error: err.message, path: req.path });
+  res.status(err.status || 500).json({ error: err.message || 'Server error' });
+});
+
+app.listen(PORT, '0.0.0.0', () => {
     logger.info('Boot', `Listening on :${PORT}`, { library: process.env.LIBRARY_PATH, db: 'PGlite' });
     console.log(`[TavernShelf] v0.1.5 listening on :${PORT}`);
     console.log(`[TavernShelf] Library: ${process.env.LIBRARY_PATH}`);
