@@ -78,6 +78,133 @@ router.get('/', requireAuth, async (req, res) => {
   } catch (e) { logger.error('Upload', 'List error', { error: e.message }); res.status(500).json({ error: 'Server error' }); }
 });
 
+// PUT /api/uploads/:id — update a pending upload's metadata and target folder
+router.put('/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const db = await getDb();
+    const item = await dbGet(db, 'SELECT * FROM upload_queue WHERE id = $1', [req.params.id]);
+    if (!item) return res.status(404).json({ error: 'Not found' });
+    if (item.status !== 'pending') return res.status(400).json({ error: 'Can only edit pending uploads' });
+
+    const { title, authors, description, system, content_type, publisher, year, tags, target_folder } = req.body;
+
+    await dbRun(db, `
+      UPDATE upload_queue SET
+        title         = COALESCE($1, title),
+        authors       = COALESCE($2, authors),
+        description   = COALESCE($3, description),
+        system        = COALESCE($4, system),
+        content_type  = COALESCE($5, content_type),
+        publisher     = COALESCE($6, publisher),
+        year          = $7,
+        tags          = COALESCE($8, tags),
+        target_folder = COALESCE($9, target_folder)
+      WHERE id = $10
+    `, [
+      title         || null,
+      authors       ? JSON.stringify(Array.isArray(authors) ? authors : authors.split(',').map(a => a.trim()).filter(Boolean)) : null,
+      description   ?? null,
+      system        || null,
+      content_type  || null,
+      publisher     || null,
+      year          ? parseInt(year) : null,
+      tags          ? JSON.stringify(Array.isArray(tags) ? tags : tags.split(',').map(t => t.trim()).filter(Boolean)) : null,
+      target_folder || null,
+      req.params.id,
+    ]);
+
+    const updated = await dbGet(db, 'SELECT * FROM upload_queue WHERE id = $1', [req.params.id]);
+    logger.event('Upload', 'Upload edited by admin', { id: req.params.id, by: req.user.email });
+    res.json(updated);
+  } catch (e) { logger.error('Upload', 'Edit error', { error: e.message }); res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/uploads/bulk — upload multiple files with shared metadata
+router.post('/bulk', requireAuth, upload.array('files', 50), async (req, res) => {
+  if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'No files uploaded' });
+  const { system, content_type, target_folder, title_prefix } = req.body;
+  const db = await getDb();
+  const results = [];
+  for (const file of req.files) {
+    const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    const baseName = originalName.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ').trim();
+    const title = title_prefix ? `${title_prefix} - ${baseName}` : baseName;
+    const id = uuid();
+    const ext = extname(originalName).slice(1).toLowerCase();
+    await dbRun(db, `
+      INSERT INTO upload_queue
+        (id, filename, original_name, target_folder, title, system, content_type,
+         file_size, file_type, uploaded_by, status, created_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',$11)
+    `, [id, file.filename, originalName, target_folder || '', title, system || '', content_type || '',
+        file.size, ext, req.user.id, now()]);
+    results.push({ id, filename: originalName, title });
+  }
+  logger.event('Upload', 'Bulk upload submitted', { count: req.files.length, by: req.user.email });
+  res.json({ uploaded: results.length, items: results });
+});
+
+// POST /api/uploads/bulk-approve — approve multiple uploads at once
+router.post('/bulk-approve', requireAuth, requireRole('admin'), async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids required' });
+
+  const results = { approved: [], failed: [] };
+  for (const id of ids) {
+    try {
+      const db = await getDb();
+      const item = await dbGet(db, 'SELECT * FROM upload_queue WHERE id = $1', [id]);
+      if (!item || item.status !== 'pending') { results.failed.push(id); continue; }
+
+      const destFolder = join(LIBRARY_PATH, item.target_folder);
+      mkdirSync(destFolder, { recursive: true });
+      const safeFilename = item.original_name.replace(/[^a-zA-Z0-9._\-\s]/g, '_');
+      const src  = join(UPLOADS_PATH, item.filename);
+      const dest = join(destFolder, safeFilename);
+      copyFileSync(src, dest);
+      unlinkSync(src);
+
+      await dbRun(db, "UPDATE upload_queue SET status='approved', reviewed_by=$1, reviewed_at=$2 WHERE id=$3",
+        [req.user.id, now(), id]);
+
+      const relPath  = join(item.target_folder, safeFilename).replace(/[\\]/g, '/');
+      const ext      = item.filename.split('.').pop().toLowerCase();
+      const { FILE_TYPE_MAP } = await import('../config.js');
+      const fileType = FILE_TYPE_MAP[ext] || 'other';
+      const itemId   = uuid();
+      const existing = await dbGet(db, 'SELECT id FROM library_items WHERE path = $1', [relPath]);
+      if (!existing) {
+        await dbRun(db, `INSERT INTO library_items
+          (id, path, filename, title, authors, description, system, content_type,
+           tags, file_size, file_type, metadata_source, created_at, updated_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'upload',$12,$12)`,
+          [itemId, relPath, safeFilename, item.title, item.authors||'[]', item.description||'',
+           item.system||'', item.content_type||'', item.tags||'[]', item.file_size, fileType, now()]);
+
+        if (fileType === 'image') {
+          const { generateCover } = await import('../services/coverService.js');
+          const absPath = join(LIBRARY_PATH, relPath);
+          setImmediate(async () => {
+            try {
+              const coverPath = await generateCover(absPath, itemId, 'image');
+              if (coverPath) {
+                const db2 = await getDb();
+                await dbRun(db2, 'UPDATE library_items SET cover_path=$1 WHERE id=$2', [coverPath, itemId]);
+              }
+            } catch {}
+          });
+        }
+      }
+      results.approved.push(id);
+    } catch (e) { logger.warn('Upload', 'Bulk approve item failed', { id, error: e.message }); results.failed.push(id); }
+  }
+
+  scanLibrary().catch(() => {});
+  logger.event('Upload', 'Bulk approve', { approved: results.approved.length, failed: results.failed.length, by: req.user.email });
+  res.json(results);
+});
+
+
 router.post('/:id/approve', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     const db = await getDb();

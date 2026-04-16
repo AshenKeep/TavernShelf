@@ -54,7 +54,11 @@ export default function UploadsPage() {
   const [success, setSuccess]     = useState('');
   const [suggestion, setSuggestion] = useState(null); // matched suggestion from rules
   const [bulkFiles, setBulkFiles]   = useState([]);
-  const [bulkForm, setBulkForm]     = useState({ system:'', contentType:'', targetFolder:'', titlePrefix:'' });
+  const [bulkForm, setBulkForm]     = useState({
+    system:'', contentType:'', targetFolder:'', titlePrefix:'',
+    inModule: false, inModuleFolder:'', inModuleSubfolder:'',
+    moduleMode:'existing', moduleName:'', moduleFolder:'',
+  });
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkResult, setBulkResult] = useState(null);
   const bulkFileRef = useRef(null);
@@ -136,6 +140,32 @@ export default function UploadsPage() {
     form.inModule, form.inModuleFolder, form.inModuleSubfolder,
     folders,
   ]);
+
+  // Auto-compute bulk targetFolder from selections
+  const bulkIsAdventureModule = bulkForm.contentType === 'Adventure Module';
+  const bulkInModuleSubfolders = bulkForm.inModuleFolder
+    ? folders.filter(f =>
+        f.path.startsWith(bulkForm.inModuleFolder + '/') &&
+        f.path.split('/').length === bulkForm.inModuleFolder.split('/').length + 1
+      )
+    : [];
+
+  useEffect(() => {
+    if (!bulkForm.system || !bulkForm.contentType) return;
+    let suggested;
+    if (bulkForm.inModule && bulkForm.inModuleFolder) {
+      suggested = bulkForm.inModuleSubfolder || bulkForm.inModuleFolder;
+    } else if (bulkIsAdventureModule) {
+      if (bulkForm.moduleMode === 'existing' && bulkForm.moduleFolder) suggested = bulkForm.moduleFolder;
+      else if (bulkForm.moduleMode === 'new' && bulkForm.moduleName.trim()) suggested = `${bulkForm.system}/Adventure Module/${bulkForm.moduleName.trim()}`;
+      else return;
+    } else {
+      suggested = `${bulkForm.system}/${bulkForm.contentType}`;
+    }
+    const match = folders.find(f => f.path.toLowerCase() === suggested.toLowerCase());
+    setBulkForm(prev => ({ ...prev, targetFolder: match ? match.path : suggested }));
+  }, [bulkForm.system, bulkForm.contentType, bulkForm.moduleMode, bulkForm.moduleName,
+      bulkForm.moduleFolder, bulkForm.inModule, bulkForm.inModuleFolder, bulkForm.inModuleSubfolder, folders]);
 
   const loadQueue = () => get(`/uploads?status=${qStatus}`).then(setQueue).catch(() => {});
   useEffect(() => { if (tab === 'queue') loadQueue(); }, [tab, qStatus]);
@@ -450,34 +480,88 @@ export default function UploadsPage() {
           <div className="card" style={{ padding: 20, marginBottom: 16 }}>
             <h3 style={{ fontFamily:'var(--font-display)', fontSize:15, color:'var(--text-0)', marginBottom:16 }}>Bulk Upload</h3>
             <p style={{ fontSize:13, color:'var(--text-3)', marginBottom:16 }}>
-              Select multiple files. They'll all go to the same folder with the same system/content type.
-              Each file's title defaults to its filename — you can edit them individually after upload.
+              Select multiple files. They all go to the same folder with the same system/content type.
+              Each file's title defaults to its filename — edit individually in the admin queue after upload.
             </p>
 
-            {/* Shared metadata */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
-              <div>
-                <label style={{ display:'block', fontSize:12, color:'var(--text-2)', marginBottom:5 }}>System</label>
-                <select value={bulkForm.system} onChange={e => setBulkForm(f=>({...f,system:e.target.value}))}>
-                  <option value="">— Any —</option>
-                  {TTRPG_SYSTEMS.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ display:'block', fontSize:12, color:'var(--text-2)', marginBottom:5 }}>Content Type</label>
-                <select value={bulkForm.contentType} onChange={e => setBulkForm(f=>({...f,contentType:e.target.value}))}>
-                  <option value="">— Any —</option>
+            {/* Step 1: System */}
+            <div style={{ marginBottom:16 }}>
+              <label style={{ display:'block', fontSize:12, color:'var(--text-2)', marginBottom:5, fontWeight:600 }}>1. System *</label>
+              <select value={bulkForm.system} onChange={e => setBulkForm(f=>({...f,system:e.target.value,moduleFolder:'',inModuleFolder:''}))}>
+                <option value="">— Select system —</option>
+                {TTRPG_SYSTEMS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+
+            {/* Step 2: Content Type */}
+            {bulkForm.system && (
+              <div style={{ marginBottom:16 }}>
+                <label style={{ display:'block', fontSize:12, color:'var(--text-2)', marginBottom:5, fontWeight:600 }}>2. Content Type *</label>
+                <select value={bulkForm.contentType} onChange={e => setBulkForm(f=>({...f,contentType:e.target.value,inModule:false,inModuleFolder:'',moduleFolder:''}))}>
+                  <option value="">— Select type —</option>
                   {CONTENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
-              <div style={{ gridColumn:'1/-1' }}>
-                <label style={{ display:'block', fontSize:12, color:'var(--text-2)', marginBottom:5 }}>Target Folder *</label>
-                <FolderPicker folders={folders} value={bulkForm.targetFolder} onChange={v => setBulkForm(f=>({...f,targetFolder:v}))} placeholder="— Select target folder —" />
+            )}
+
+            {/* Adventure Module flow */}
+            {bulkIsAdventureModule && bulkForm.system && (
+              <div style={{ marginBottom:16, padding:14, background:'var(--bg-3)', borderRadius:8, border:'1px solid var(--border)' }}>
+                <label style={{ display:'block', fontSize:12, color:'var(--text-2)', marginBottom:8, fontWeight:600 }}>3. Module</label>
+                <div style={{ display:'flex', gap:8, marginBottom:10 }}>
+                  {['existing','new'].map(m => (
+                    <button key={m} type="button"
+                      className={`btn btn-sm ${bulkForm.moduleMode===m?'btn-primary':'btn-ghost'}`}
+                      onClick={() => setBulkForm(f=>({...f,moduleMode:m,moduleFolder:'',moduleName:''}))}>
+                      {m === 'existing' ? 'Existing Module' : 'New Module'}
+                    </button>
+                  ))}
+                </div>
+                {bulkForm.moduleMode === 'existing' ? (
+                  <FolderPicker folders={moduleFolders.filter(f => f.path.startsWith(bulkForm.system + '/'))}
+                    value={bulkForm.moduleFolder} onChange={v => setBulkForm(f=>({...f,moduleFolder:v}))}
+                    placeholder="— Select existing module —" />
+                ) : (
+                  <input value={bulkForm.moduleName} onChange={e => setBulkForm(f=>({...f,moduleName:e.target.value}))}
+                    placeholder="Module folder name e.g. Curse of Strahd" />
+                )}
               </div>
-              <div>
-                <label style={{ display:'block', fontSize:12, color:'var(--text-2)', marginBottom:5 }}>Title Prefix <span style={{ color:'var(--text-3)', fontWeight:400 }}>optional</span></label>
-                <input value={bulkForm.titlePrefix} onChange={e => setBulkForm(f=>({...f,titlePrefix:e.target.value}))} placeholder="e.g. Curse of Strahd" />
+            )}
+
+            {/* In-module flow for non-module content */}
+            {bulkForm.contentType && !bulkIsAdventureModule && bulkForm.system && moduleFolders.some(m => m.path.startsWith(bulkForm.system + '/')) && (
+              <div style={{ marginBottom:16 }}>
+                <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, color:'var(--text-1)', cursor:'pointer' }}>
+                  <input type="checkbox" checked={bulkForm.inModule}
+                    onChange={e => setBulkForm(f=>({...f,inModule:e.target.checked,inModuleFolder:'',inModuleSubfolder:''}))} />
+                  These files belong inside an Adventure Module folder
+                </label>
+                {bulkForm.inModule && (
+                  <div style={{ marginTop:10, paddingLeft:22, display:'flex', flexDirection:'column', gap:8 }}>
+                    <FolderPicker folders={moduleFolders.filter(m => m.path.startsWith(bulkForm.system + '/'))}
+                      value={bulkForm.inModuleFolder} onChange={v => setBulkForm(f=>({...f,inModuleFolder:v,inModuleSubfolder:''}))}
+                      placeholder="— Select module —" />
+                    {bulkInModuleSubfolders.length > 0 && (
+                      <FolderPicker folders={bulkInModuleSubfolders}
+                        value={bulkForm.inModuleSubfolder} onChange={v => setBulkForm(f=>({...f,inModuleSubfolder:v}))}
+                        placeholder="— Module root (no subfolder) —" />
+                    )}
+                  </div>
+                )}
               </div>
+            )}
+
+            {/* Target folder display */}
+            {bulkForm.targetFolder && (
+              <div style={{ marginBottom:16, padding:'8px 12px', background:'var(--bg-3)', borderRadius:6, fontSize:12, color:'var(--text-2)', fontFamily:'monospace' }}>
+                📁 {bulkForm.targetFolder}
+              </div>
+            )}
+
+            {/* Optional title prefix */}
+            <div style={{ marginBottom:16 }}>
+              <label style={{ display:'block', fontSize:12, color:'var(--text-2)', marginBottom:5 }}>Title Prefix <span style={{ color:'var(--text-3)', fontWeight:400 }}>optional</span></label>
+              <input value={bulkForm.titlePrefix} onChange={e => setBulkForm(f=>({...f,titlePrefix:e.target.value}))} placeholder="e.g. Curse of Strahd" />
             </div>
 
             {/* File picker */}

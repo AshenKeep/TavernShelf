@@ -752,7 +752,6 @@ function EmailTab() {
 
 function UsersTab() {
   const { get, post, put, del } = useApi();
-  const { user: currentUser } = useApi();
   const [users, setUsers] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ email: '', password: '', displayName: '', role: 'member' });
