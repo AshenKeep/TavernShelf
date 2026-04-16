@@ -39,7 +39,7 @@ function FolderPicker({ folders, value, onChange, placeholder = '— Select a fo
 }
 
 export default function UploadsPage() {
-  const { post, get } = useApi();
+  const { post, get, token } = useApi();
   const { isAdmin }   = useAuth();
   const fileRef       = useRef(null);
 
