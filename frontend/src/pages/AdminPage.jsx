@@ -1377,7 +1377,7 @@ export default function AdminPage() {
         </div>
       )}
 
-      {tab === 'about' && && <AboutTab />}
+      {tab === 'about' && <AboutTab />}
       {tab === 'email' && <EmailTab />}
 
     </div>

@@ -10,8 +10,8 @@ services:
     environment:
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required - run: openssl rand -hex 64}
       - JWT_EXPIRY=${JWT_EXPIRY:-7d}
-      - ADMIN_EMAIL=${ADMIN_EMAIL:?ADMIN_EMAIL is required}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      - # ADMIN_EMAIL (removed)=${# ADMIN_EMAIL (removed):?# ADMIN_EMAIL (removed) is required}
+      - # ADMIN_PASSWORD (removed)=${# ADMIN_PASSWORD (removed):?# ADMIN_PASSWORD (removed) is required}
       - TRUST_PROXY=${TRUST_PROXY:-0}
       # PGlite stores its data as a directory — works on CIFS/NFS/any filesystem
       - DB_PATH=/app/data/pgdata
