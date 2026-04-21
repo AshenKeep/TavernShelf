@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.1.16] - 2026-04-21
+
+### Changed
+- Admin account creation moved from environment variables to first-run setup wizard
+- On first start with no admin account, app shows a setup screen to create credentials
+- `ADMIN_EMAIL` and `ADMIN_PASSWORD` env vars removed — no longer needed
+- Password reset available in Admin → Settings tab
+
+### Added
+- `GET /api/auth/setup-status` — public endpoint, returns whether first-run setup is needed
+- `POST /api/auth/setup` — creates the first admin account (only works if no admin exists)
+- `POST /api/auth/reset-password` — change own password (requires current password)
+- FirstRunPage component shown before login when no admin exists
+
+### Fixed
+- Bulk upload errors now shown in UI (were silently swallowed)
+- Global Express error handler added (catches multer errors)
+
 ## [0.1.5] — 2026-04-14
 
 ### Added — Module affiliation, upload rules, affiliated item display

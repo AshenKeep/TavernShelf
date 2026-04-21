@@ -72,14 +72,13 @@ TavernShelf lets you host your entire tabletop RPG collection, accessible from a
 ```yaml
 services:
   tavernshelf:
-    image: ghcr.io/ashenkeep/tavernshelf:0.1.5
+    image: ghcr.io/ashenkeep/tavernshelf:0.1.16
     container_name: tavernshelf
     ports:
       - "7624:3000"
     environment:
       - JWT_SECRET=your_secret_here
-      - ADMIN_EMAIL=you@example.com
-      - ADMIN_PASSWORD=yourpassword
+      # No admin env vars needed — create account via first-run setup wizard
       - TRUST_PROXY=0
       - DB_PATH=/app/data/pgdata
     volumes:
@@ -99,8 +98,7 @@ volumes:
 
 ```env
 JWT_SECRET=run_openssl_rand_hex_64_and_paste_here
-ADMIN_EMAIL=you@example.com
-ADMIN_PASSWORD=yourpassword
+# Admin account created via first-run setup wizard
 LIBRARY_PATH=/absolute/path/to/your/ttrpg/library
 PORT=7624
 ```
@@ -123,8 +121,8 @@ Open **http://localhost:7624** — sign in with your admin credentials.
 |---|---|---|---|
 | `LIBRARY_PATH` | ✓ | — | Absolute path to your TTRPG folder on the host |
 | `JWT_SECRET` | ✓ | — | Random secret — `openssl rand -hex 64` |
-| `ADMIN_EMAIL` | ✓ | — | Admin account email, created on first run |
-| `ADMIN_PASSWORD` | ✓ | — | Admin account password |
+| ~~`ADMIN_EMAIL`~~ | — | — | Removed — use first-run setup wizard instead |
+| ~~`ADMIN_PASSWORD`~~ | — | — | Removed — use first-run setup wizard instead |
 | `PORT` | | `7624` | Host port to expose TavernShelf on |
 | `JWT_EXPIRY` | | `7d` | How long login sessions last |
 | `TRUST_PROXY` | | `0` | Set to `1` when running behind a reverse proxy |
@@ -316,7 +314,7 @@ Development happens on the `dev` branch. `main` is for stable releases.
 
 | Version | Image | Notes |
 |---|---|---|
-| `0.1.5` | `ghcr.io/ashenkeep/tavernshelf:0.1.5` | Current stable — module affiliation, upload rules, affiliated display |
+| `0.1.16` | `ghcr.io/ashenkeep/tavernshelf:0.1.16` | Current stable — module affiliation, upload rules, affiliated display |
 | `0.1.4` | `ghcr.io/ashenkeep/tavernshelf:0.1.4` | Module upload flow, module folder protection |
 | `0.1.3` | `ghcr.io/ashenkeep/tavernshelf:0.1.3` | New navigation, file explorer, search page, ISBN |
 | `0.1.2` | `ghcr.io/ashenkeep/tavernshelf:0.1.2` | Auto-organise, setup wizard, module folders |

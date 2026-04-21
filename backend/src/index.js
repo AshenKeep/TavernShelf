@@ -9,7 +9,7 @@ import { existsSync } from 'fs';
 import bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
 
-import { PORT, NODE_ENV, ADMIN_EMAIL, ADMIN_PASSWORD, TRUST_PROXY, COVERS_PATH } from './config.js';
+import { PORT, NODE_ENV, TRUST_PROXY, COVERS_PATH } from './config.js';
 import { getDb, dbGet, dbRun } from './db/database.js';
 import { scanLibrary } from './services/libraryScanner.js';
 import { logger, setLogLevel } from './services/logger.js';
@@ -98,7 +98,7 @@ process.on('uncaughtException', (err) => {
 });
 
 async function start() {
-  logger.info('Boot', 'TavernShelf v0.1.5 starting');
+  logger.info('Boot', 'TavernShelf v0.1.16 starting');
 
   // Restore log level from DB settings (persists across restarts)
   try {
@@ -112,13 +112,17 @@ async function start() {
   } catch {}
   const db = await getDb();
 
-  const existing = await dbGet(db, "SELECT id FROM users WHERE role = 'admin'");
-  if (!existing) {
-    logger.info('Boot', 'Creating admin account', { email: ADMIN_EMAIL });
+  const existingAdmin = await dbGet(db, "SELECT id FROM users WHERE role = 'admin'");
+  if (!existingAdmin) {
+    // No admin exists — flag for first-run setup wizard
     await dbRun(db,
-      'INSERT INTO users (id, email, password, display_name, role, created_at) VALUES ($1,$2,$3,$4,$5,$6)',
-      [uuid(), ADMIN_EMAIL, bcrypt.hashSync(ADMIN_PASSWORD, 12), 'Admin', 'admin', Math.floor(Date.now() / 1000)]
+      "INSERT INTO settings (key, value, updated_at) VALUES ('needs_admin_setup', 'true', $1) ON CONFLICT (key) DO UPDATE SET value = 'true', updated_at = $1",
+      [Math.floor(Date.now() / 1000)]
     );
+    logger.info('Boot', 'No admin account — first-run setup required');
+  } else {
+    // Admin exists — clear any stale setup flag
+    await dbRun(db, "DELETE FROM settings WHERE key = 'needs_admin_setup'");
   }
 
   // Global error handler — catches multer errors (unsupported file type etc)
@@ -129,7 +133,7 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, '0.0.0.0', () => {
     logger.info('Boot', `Listening on :${PORT}`, { library: process.env.LIBRARY_PATH, db: 'PGlite' });
-    console.log(`[TavernShelf] v0.1.5 listening on :${PORT}`);
+    console.log(`[TavernShelf] v0.1.16 listening on :${PORT}`);
     console.log(`[TavernShelf] Library: ${process.env.LIBRARY_PATH}`);
   });
 

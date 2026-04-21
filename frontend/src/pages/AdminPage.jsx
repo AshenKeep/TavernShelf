@@ -966,6 +966,12 @@ export default function AdminPage() {
   const [bulkApproving, setBulkApproving] = useState(false);
   const [scanMsg, setScanMsg]           = useState('');
   const [restoring, setRestoring]       = useState(false);
+  const [pwCurrent, setPwCurrent]       = useState('');
+  const [pwNew,     setPwNew]           = useState('');
+  const [pwConfirm, setPwConfirm]       = useState('');
+  const [pwMsg,     setPwMsg]           = useState('');
+  const [pwError,   setPwError]         = useState('');
+  const [pwSaving,  setPwSaving]        = useState(false);
   const [restoreMsg, setRestoreMsg]     = useState('');
   const [restoreError, setRestoreError] = useState('');
   const restoreFileRef = useRef(null);
@@ -1067,6 +1073,20 @@ export default function AdminPage() {
       setRestoreMsg(`Restore complete — ${data.counts.library_items} items, ${data.counts.users} users restored.`);
     } catch (e) { setRestoreError(`Restore failed: ${e.message}`); }
     finally { setRestoring(false); if (restoreFileRef.current) restoreFileRef.current.value = ''; }
+  };
+
+  const changePassword = async () => {
+    setPwMsg(''); setPwError('');
+    if (!pwCurrent || !pwNew) return setPwError('All fields required');
+    if (pwNew.length < 8) return setPwError('New password must be at least 8 characters');
+    if (pwNew !== pwConfirm) return setPwError('Passwords do not match');
+    setPwSaving(true);
+    try {
+      await post('/auth/reset-password', { currentPassword: pwCurrent, newPassword: pwNew });
+      setPwMsg('Password changed successfully');
+      setPwCurrent(''); setPwNew(''); setPwConfirm('');
+    } catch (e) { setPwError(e.message); }
+    finally { setPwSaving(false); }
   };
 
   const registerUrl = (t) => `${window.location.origin}/register?invite=${t}`;
@@ -1330,9 +1350,34 @@ export default function AdminPage() {
       {tab === 'logs' && <LogsTab token={token} />}
       {tab === 'users' && <UsersTab />}
 
-      {tab === 'settings' && <SettingsTab />}
-      {tab === 'suggestions' && <SuggestionsTab />}
-      {tab === 'about' && <AboutTab />}
+            {tab === 'settings' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 520 }}>
+          <div className="card" style={{ padding: 20 }}>
+            <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 15, color: 'var(--text-0)', marginBottom: 16 }}>Change Password</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 5 }}>Current Password</label>
+                <input type="password" value={pwCurrent} onChange={e => setPwCurrent(e.target.value)} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 5 }}>New Password <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>(min 8 characters)</span></label>
+                <input type="password" value={pwNew} onChange={e => setPwNew(e.target.value)} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-2)', marginBottom: 5 }}>Confirm New Password</label>
+                <input type="password" value={pwConfirm} onChange={e => setPwConfirm(e.target.value)} />
+              </div>
+              {pwError && <div style={{ fontSize: 13, color: 'var(--red-hi)', padding: '8px 12px', background: 'rgba(168,50,50,0.1)', borderRadius: 6 }}>{pwError}</div>}
+              {pwMsg   && <div style={{ fontSize: 13, color: 'var(--green-hi)', padding: '8px 12px', background: 'rgba(42,122,74,0.1)', borderRadius: 6 }}>{pwMsg}</div>}
+              <button className="btn btn-primary" style={{ alignSelf: 'flex-start' }} onClick={changePassword} disabled={pwSaving}>
+                {pwSaving ? <><span className="spinner" style={{ width: 12, height: 12 }} /> Saving…</> : 'Change Password'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === 'about' && && <AboutTab />}
       {tab === 'email' && <EmailTab />}
 
     </div>

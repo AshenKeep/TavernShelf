@@ -1,6 +1,6 @@
 {
   "name": "tavernshelf-api",
-  "version": "0.1.5",
+  "version": "0.1.16",
   "description": "TavernShelf TTRPG Library API",
   "main": "src/index.js",
   "type": "module",

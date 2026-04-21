@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { useApi } from './hooks/useApi.js';
 import Layout from './components/Layout.jsx';
 import SetupWizard from './components/SetupWizard.jsx';
+import FirstRunPage from './pages/FirstRunPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import RegisterPage from './pages/RegisterPage.jsx';
 import LibraryPage from './pages/LibraryPage.jsx';
@@ -31,18 +32,40 @@ function ProtectedRoute({ children, adminOnly = false }) {
 function AppRoutes() {
   const { user } = useAuth();
   const { get }  = useApi();
-  const [setupNeeded,  setSetupNeeded]  = useState(false);
-  const [setupChecked, setSetupChecked] = useState(false);
 
+  // First-run: check if admin account needs to be created (no auth needed)
+  const [firstRun,        setFirstRun]        = useState(null); // null=unknown, true/false
+  const [librarySetup,    setLibrarySetup]    = useState(false);
+  const [libraryChecked,  setLibraryChecked]  = useState(false);
+
+  // Check first-run status on mount (public endpoint, no auth)
   useEffect(() => {
-    if (!user || user.role !== 'admin') { setSetupChecked(true); return; }
+    fetch('/api/auth/setup-status')
+      .then(r => r.json())
+      .then(d => setFirstRun(d.needsSetup))
+      .catch(() => setFirstRun(false));
+  }, []);
+
+  // Check library setup once logged in as admin
+  useEffect(() => {
+    if (!user || user.role !== 'admin') { setLibraryChecked(true); return; }
     get('/admin/settings')
-      .then(settings => setSetupNeeded(settings['library.setup_complete'] !== 'true'))
+      .then(settings => setLibrarySetup(settings['library.setup_complete'] !== 'true'))
       .catch(() => {})
-      .finally(() => setSetupChecked(true));
+      .finally(() => setLibraryChecked(true));
   }, [user?.id]);
 
-  if (!setupChecked && user) return (
+  // Still checking first-run status
+  if (firstRun === null) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+      <div className="spinner" />
+    </div>
+  );
+
+  // First-run: create admin account
+  if (firstRun) return <FirstRunPage onComplete={() => setFirstRun(false)} />;
+
+  if (!libraryChecked && user) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
       <div className="spinner" />
     </div>
@@ -50,8 +73,8 @@ function AppRoutes() {
 
   return (
     <>
-      {setupNeeded && user?.role === 'admin' && (
-        <SetupWizard onComplete={() => setSetupNeeded(false)} />
+      {librarySetup && user?.role === 'admin' && (
+        <SetupWizard onComplete={() => setLibrarySetup(false)} />
       )}
       <Routes>
         <Route path="/login"    element={user ? <Navigate to="/" /> : <LoginPage />} />

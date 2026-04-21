@@ -11,6 +11,59 @@ import { sendUserInviteEmail } from '../services/emailService.js';
 const router = Router();
 const now = () => Math.floor(Date.now() / 1000);
 
+// GET /api/auth/setup-status — public, returns whether first-run setup is needed
+router.get('/setup-status', async (req, res) => {
+  try {
+    const db = await getDb();
+    const flag = await dbGet(db, "SELECT value FROM settings WHERE key = 'needs_admin_setup'");
+    res.json({ needsSetup: flag?.value === 'true' });
+  } catch { res.json({ needsSetup: false }); }
+});
+
+// POST /api/auth/setup — public, creates the first admin account (only works if no admin exists)
+router.post('/setup', async (req, res) => {
+  try {
+    const db = await getDb();
+    const existing = await dbGet(db, "SELECT id FROM users WHERE role = 'admin'");
+    if (existing) return res.status(400).json({ error: 'Admin account already exists' });
+
+    const { email, password, displayName } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+    if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+    const id = uuid();
+    await dbRun(db,
+      'INSERT INTO users (id, email, password, display_name, role, created_at) VALUES ($1,$2,$3,$4,$5,$6)',
+      [id, email.toLowerCase().trim(), bcrypt.hashSync(password, 12), displayName || 'Admin', 'admin', Math.floor(Date.now() / 1000)]
+    );
+    await dbRun(db, "DELETE FROM settings WHERE key = 'needs_admin_setup'");
+    logger.event('Auth', 'Admin account created via setup wizard', { email });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/auth/reset-password — admin only, change own password
+router.post('/reset-password', requireAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Both passwords required' });
+    if (newPassword.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters' });
+
+    const db = await getDb();
+    const user = await dbGet(db, 'SELECT * FROM users WHERE id = $1', [req.user.id]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const valid = await bcrypt.compare(currentPassword, user.password);
+    if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+
+    await dbRun(db, 'UPDATE users SET password = $1 WHERE id = $2',
+      [bcrypt.hashSync(newPassword, 12), req.user.id]);
+    logger.event('Auth', 'Password changed', { userId: req.user.id });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;

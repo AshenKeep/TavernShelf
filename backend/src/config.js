@@ -6,8 +6,7 @@ export const COVERS_PATH    = process.env.COVERS_PATH  || '/app/covers';
 export const UPLOADS_PATH   = process.env.UPLOADS_PATH || '/app/uploads';
 // PGlite stores data as a directory, not a single file
 export const DB_PATH        = process.env.DB_PATH      || '/app/data/pgdata';
-export const ADMIN_EMAIL    = process.env.ADMIN_EMAIL  || 'admin@tavernshelf.local';
-export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'changeme';
+// Admin account is created via first-run setup wizard, not env vars
 export const NODE_ENV       = process.env.NODE_ENV     || 'development';
 export const TRUST_PROXY    = process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true';
 
