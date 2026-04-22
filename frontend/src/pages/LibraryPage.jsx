@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useApi } from '../hooks/useApi.js';
+import { appEvents } from '../context/AuthContext.jsx';
 import BookCard from '../components/BookCard.jsx';
 
 const Icon = ({ d, size = 16 }) => (
@@ -123,14 +124,24 @@ export default function LibraryPage() {
     });
   };
 
-  // Load overview
-  useEffect(() => {
+  // Load overview — also exposed as a callback for event-driven refresh
+  const loadOverview = () => {
     setOvLoading(true);
     const params = system ? { system } : {};
     get('/library/overview', params)
       .then(setOverview)
       .catch(() => {})
       .finally(() => setOvLoading(false));
+  };
+
+  useEffect(() => { loadOverview(); }, [system]);
+
+  // Re-fetch overview when library changes (scan, cover regeneration, upload approved)
+  useEffect(() => {
+    const handler = () => loadOverview();
+    const unsub1 = appEvents.on('libraryChanged', handler);
+    const unsub2 = appEvents.on('uploadReviewed', handler);
+    return () => { unsub1(); unsub2(); };
   }, [system]);
 
   // Load grid when drilled in

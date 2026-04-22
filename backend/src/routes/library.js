@@ -524,6 +524,13 @@ router.post('/items/:id/cover/extract', requireAuth, requireRole('admin'), async
     const absPath = pjoin(LP, item.path);
     if (!pExists(absPath)) return res.status(404).json({ error: 'File not found on disk' });
 
+    // Delete existing cover so generateCover always runs fresh
+    const { existsSync: ex2, unlinkSync: ul2 } = await import('fs');
+    const { join: pj2 } = await import('path');
+    const { COVERS_PATH: CP2 } = await import('../config.js');
+    const coverFile = pj2(CP2, `${item.id}.webp`);
+    if (ex2(coverFile)) { try { ul2(coverFile); } catch {} }
+
     const coverPath = await generateCover(absPath, item.id, item.file_type);
     if (!coverPath) return res.status(422).json({ error: 'Could not extract cover from this file type' });
 
@@ -536,33 +543,45 @@ router.post('/items/:id/cover/extract', requireAuth, requireRole('admin'), async
 
 // POST /api/library/regenerate-covers — re-generate covers for all PDFs that have none or a failed one
 router.post('/regenerate-covers', requireAuth, requireRole('admin'), async (req, res) => {
-  res.json({ message: 'Cover regeneration started in background' });
+  const force = req.body?.force === true; // force=true deletes existing covers first
+  res.json({ message: `Cover regeneration started (force=${force})` });
   setImmediate(async () => {
     try {
       const db = await getDb();
       const items = await dbAll(db, `
-        SELECT id, path, file_type FROM library_items
+        SELECT id, path, file_type, title FROM library_items
         WHERE file_type IN ('pdf', 'cbz', 'image')
       `);
-      let regenerated = 0;
+      let regenerated = 0, skipped = 0, failed = 0;
+      logger.info('Cover', 'Regeneration started', { total: items.length, force });
       for (const item of items) {
         try {
           const { join: pjoin } = await import('path');
-          const { existsSync, statSync } = await import('fs');
+          const { existsSync, unlinkSync } = await import('fs');
           const { LIBRARY_PATH: LP, COVERS_PATH: CP } = await import('../config.js');
           const absPath  = pjoin(LP, item.path);
           const coverOut = pjoin(CP, `${item.id}.webp`);
-          if (!existsSync(absPath)) continue;
-          // Skip if cover already exists and is valid (>1KB)
-          if (existsSync(coverOut) && statSync(coverOut).size > 1024) continue;
+          if (!existsSync(absPath)) {
+            logger.debug('Cover', 'Skipping — file not on disk', { id: item.id, path: item.path });
+            skipped++; continue;
+          }
+          // Delete existing cover so generateCover always runs fresh
+          if (existsSync(coverOut)) {
+            try { unlinkSync(coverOut); } catch {}
+          }
+          logger.debug('Cover', 'Regenerating', { id: item.id, title: item.title, fileType: item.file_type });
           const coverPath = await generateCover(absPath, item.id, item.file_type);
           if (coverPath) {
-            await dbRun(db, 'UPDATE library_items SET cover_path=$1 WHERE id=$2', [coverPath, item.id]);
+            await dbRun(db, 'UPDATE library_items SET cover_path=$1, updated_at=$2 WHERE id=$3',
+              [coverPath, Math.floor(Date.now()/1000), item.id]);
             regenerated++;
-          }
-        } catch {}
+          } else { failed++; }
+        } catch (e) {
+          logger.error('Cover', 'Regeneration item failed', { id: item.id, error: e.message });
+          failed++;
+        }
       }
-      logger.event('Library', 'Cover regeneration complete', { regenerated, total: items.length });
+      logger.event('Library', 'Cover regeneration complete', { regenerated, skipped, failed, total: items.length });
     } catch (e) {
       logger.error('Library', 'Cover regeneration failed', { error: e.message });
     }

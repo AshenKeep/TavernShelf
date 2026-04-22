@@ -1051,6 +1051,8 @@ export default function AdminPage() {
     try {
       await post('/library/regenerate-covers', {});
       setRegenMsg('Cover regeneration started — check logs for progress');
+      // Refresh gallery after a delay to pick up new covers
+      setTimeout(() => appEvents.emit('libraryChanged'), 5000);
     } catch (e) { setRegenMsg(`Error: ${e.message}`); }
     finally { setRegenning(false); }
   };
