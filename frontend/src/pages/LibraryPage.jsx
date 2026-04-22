@@ -110,6 +110,12 @@ export default function LibraryPage() {
   const [pages, setPages]         = useState(1);
   const [gridLoading, setGridLoading] = useState(false);
 
+  // Bulk selection + move
+  const [selectedItems, setSelectedItems] = useState(new Set());
+  const [bulkMoveFolder, setBulkMoveFolder] = useState('');
+  const [bulkMoving, setBulkMoving]       = useState(false);
+  const [allFolders, setAllFolders]       = useState([]);
+
   // Active tab: 'overview' | content_type string | 'modules' | 'all'
   const unsorted = searchParams.get('unsorted') === '1';
   const activeTab = unsorted ? 'unsorted' : (module_folder_id ? 'module' : (content_type || folder || 'overview'));
@@ -138,6 +144,19 @@ export default function LibraryPage() {
 
   useEffect(() => { loadOverview(); }, [system]);
 
+  // Load flat folder list for bulk move picker
+  useEffect(() => {
+    get('/library/folders').then(tree => {
+      const flat = [];
+      const flatten = (nodes, depth = 0) => nodes.forEach(n => {
+        flat.push({ ...n, depth });
+        flatten(n.children || [], depth + 1);
+      });
+      flatten(Array.isArray(tree) ? tree : []);
+      setAllFolders(flat);
+    }).catch(() => {});
+  }, []);
+
   // Re-fetch overview when library changes (scan, cover regeneration, upload approved)
   useEffect(() => {
     const handler = () => loadOverview();
@@ -158,10 +177,32 @@ export default function LibraryPage() {
     if (module_folder_id) params.module_folder_id = module_folder_id;
 
     get('/library/items', params)
-      .then(data => { setItems(data.items); setTotal(data.total); setPages(data.pages); setSubfolders(data.subfolders || []); })
+      .then(data => { setItems(data.items); setTotal(data.total); setPages(data.pages); setSubfolders(data.subfolders || []); setSelectedItems(new Set()); })
       .catch(() => {})
       .finally(() => setGridLoading(false));
   }, [system, content_type, folder, page, sort, unsorted, module_folder_id]);
+
+  const bulkMoveSelected = async () => {
+    if (!bulkMoveFolder || selectedItems.size === 0) return;
+    setBulkMoving(true);
+    try {
+      await Promise.all([...selectedItems].map(id =>
+        post(`/library/items/${id}/move`, { targetFolder: bulkMoveFolder })
+      ));
+      setSelectedItems(new Set());
+      setBulkMoveFolder('');
+      // Reload items and overview
+      const params = { page, sort };
+      if (system) params.system = system;
+      if (content_type) params.content_type = content_type;
+      if (folder) params.folder = folder;
+      if (module_folder_id) params.module_folder_id = module_folder_id;
+      get('/library/items', params)
+        .then(data => { setItems(data.items); setTotal(data.total); setPages(data.pages); setSubfolders(data.subfolders || []); });
+      loadOverview();
+    } catch (e) { console.error('Bulk move failed:', e.message); }
+    finally { setBulkMoving(false); }
+  };
 
   const drillInto = (ct) => updateParam('content_type', ct);
   const drillIntoFolder = (path, moduleId) => {
@@ -454,7 +495,21 @@ export default function LibraryPage() {
                   <>
                     <div style={{ fontSize: 12, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>Files</div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 16 }}>
-                      {items.map(item => <BookCard key={item.id} item={item} affiliated={!!item.is_affiliated && !item.in_folder} />)}
+                      {items.map(item => (
+                  <div key={item.id} style={{ position:'relative' }}>
+                    {selectedItems.size > 0 || true ? (
+                      <input type="checkbox" checked={selectedItems.has(item.id)}
+                        onChange={() => setSelectedItems(prev => {
+                          const n = new Set(prev);
+                          if (n.has(item.id)) n.delete(item.id); else n.add(item.id);
+                          return n;
+                        })}
+                        style={{ position:'absolute', top:8, left:8, zIndex:10, width:16, height:16, cursor:'pointer' }}
+                      />
+                    ) : null}
+                    <BookCard item={item} affiliated={!!item.is_affiliated && !item.in_folder} />
+                  </div>
+                ))}
                     </div>
                   </>
                 )}
@@ -466,6 +521,42 @@ export default function LibraryPage() {
               </div>
             ) : (
               <>
+                {/* Bulk selection toolbar */}
+                {items.length > 0 && (
+                  <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14, padding:'8px 12px', background:'var(--bg-2)', borderRadius:8, border:'1px solid var(--border)', flexWrap:'wrap' }}>
+                    <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:13, cursor:'pointer', flexShrink:0 }}>
+                      <input type="checkbox"
+                        checked={selectedItems.size === items.length && items.length > 0}
+                        onChange={e => e.target.checked ? setSelectedItems(new Set(items.map(i => i.id))) : setSelectedItems(new Set())}
+                      />
+                      {selectedItems.size > 0 ? `${selectedItems.size} selected` : 'Select'}
+                    </label>
+                    {selectedItems.size > 0 && (
+                      <>
+                        <select value={bulkMoveFolder} onChange={e => setBulkMoveFolder(e.target.value)}
+                          style={{ fontSize:12, fontFamily:'monospace', flex:1, minWidth:200, maxWidth:400 }}>
+                          <option value="">— Move selected to folder… —</option>
+                          {allFolders.filter(f => f.is_module).length > 0 && (
+                            <optgroup label="⚔ Module Folders">
+                              {allFolders.filter(f => f.is_module).map(f => (
+                                <option key={f.id} value={f.path}>{f.path}</option>
+                              ))}
+                            </optgroup>
+                          )}
+                          <optgroup label="Library Folders">
+                            {allFolders.filter(f => !f.is_module).map(f => (
+                              <option key={f.id} value={f.path}>{f.path}</option>
+                            ))}
+                          </optgroup>
+                        </select>
+                        <button className="btn btn-primary btn-sm" disabled={!bulkMoveFolder || bulkMoving} onClick={bulkMoveSelected}>
+                          {bulkMoving ? <span className="spinner" style={{ width:12, height:12 }}/> : `Move ${selectedItems.size}`}
+                        </button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => { setSelectedItems(new Set()); setBulkMoveFolder(''); }}>Clear</button>
+                      </>
+                    )}
+                  </div>
+                )}
                 {/* Legend for module view */}
                 {module_folder_id && items.some(i => i.is_affiliated) && (
                   <div style={{ display: 'flex', gap: 16, marginBottom: 12, fontSize: 11, color: 'var(--text-3)', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -481,7 +572,21 @@ export default function LibraryPage() {
                   </div>
                 )}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 16 }}>
-                  {items.map(item => <BookCard key={item.id} item={item} affiliated={!!item.is_affiliated && !item.in_folder} />)}
+                  {items.map(item => (
+                  <div key={item.id} style={{ position:'relative' }}>
+                    {selectedItems.size > 0 || true ? (
+                      <input type="checkbox" checked={selectedItems.has(item.id)}
+                        onChange={() => setSelectedItems(prev => {
+                          const n = new Set(prev);
+                          if (n.has(item.id)) n.delete(item.id); else n.add(item.id);
+                          return n;
+                        })}
+                        style={{ position:'absolute', top:8, left:8, zIndex:10, width:16, height:16, cursor:'pointer' }}
+                      />
+                    ) : null}
+                    <BookCard item={item} affiliated={!!item.is_affiliated && !item.in_folder} />
+                  </div>
+                ))}
                 </div>
               </>
             )}

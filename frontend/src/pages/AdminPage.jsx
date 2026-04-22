@@ -964,6 +964,8 @@ export default function AdminPage() {
   const [queueModules, setQueueModules]   = useState([]);
   const [selectedIds, setSelectedIds]     = useState(new Set());
   const [bulkApproving, setBulkApproving] = useState(false);
+  const [bulkEditFolder, setBulkEditFolder] = useState('');
+  const [bulkSaving, setBulkSaving]       = useState(false);
   const [scanMsg, setScanMsg]           = useState('');
   const [regenMsg, setRegenMsg]         = useState('');
   const [regenning, setRegenning]       = useState(false);
@@ -985,8 +987,13 @@ export default function AdminPage() {
   useEffect(() => { loadQueue(); loadStats(); }, []);
   useEffect(() => {
     if (tab === 'queue') {
-      get('/library/folders').then(data => {
-        const flat = data.folders || data || [];
+      get('/library/folders').then(tree => {
+        const flat = [];
+        const flatten = (nodes, depth = 0) => nodes.forEach(n => {
+          flat.push({ ...n, depth });
+          flatten(n.children || [], depth + 1);
+        });
+        flatten(Array.isArray(tree) ? tree : (tree.children || []));
         setQueueFolders(flat);
         setQueueModules(flat.filter(f => f.is_module));
       }).catch(() => {});
@@ -1011,6 +1018,18 @@ export default function AdminPage() {
     loadQueue();
     setEditingUpload(null);
     setSelectedIds(new Set());
+  };
+
+  const bulkSetFolder = async () => {
+    if (!bulkEditFolder || selectedIds.size === 0) return;
+    setBulkSaving(true);
+    try {
+      await Promise.all([...selectedIds].map(id =>
+        put(`/uploads/${id}`, { target_folder: bulkEditFolder })
+      ));
+      loadQueue();
+    } catch (e) { console.error('Bulk folder set failed:', e.message); }
+    finally { setBulkSaving(false); setBulkEditFolder(''); }
   };
 
   const bulkApprove = async () => {
@@ -1164,6 +1183,27 @@ export default function AdminPage() {
                 </label>
                 {selectedIds.size > 0 && (
                   <>
+                    <div style={{ display:'flex', gap:6, alignItems:'center', marginLeft: 8 }}>
+                      <select value={bulkEditFolder} onChange={e => setBulkEditFolder(e.target.value)}
+                        style={{ fontSize:12, fontFamily:'monospace', maxWidth:260 }}>
+                        <option value="">— Set folder for selected —</option>
+                        {queueModules.length > 0 && (
+                          <optgroup label="⚔ Module Folders">
+                            {queueModules.map(m => (
+                              <option key={m.id} value={m.path}>{m.path}</option>
+                            ))}
+                          </optgroup>
+                        )}
+                        <optgroup label="Library Folders">
+                          {queueFolders.filter(f => !f.is_module).map(f => (
+                            <option key={f.id} value={f.path}>{f.path}</option>
+                          ))}
+                        </optgroup>
+                      </select>
+                      <button className="btn btn-ghost btn-sm" disabled={!bulkEditFolder || bulkSaving} onClick={bulkSetFolder}>
+                        {bulkSaving ? <span className="spinner" style={{ width:12, height:12 }}/> : 'Set Folder'}
+                      </button>
+                    </div>
                     <button className="btn btn-primary btn-sm" disabled={bulkApproving} onClick={bulkApprove}>
                       {bulkApproving ? <span className="spinner" style={{ width:12, height:12 }}/> : `✓ Approve ${selectedIds.size}`}
                     </button>
@@ -1243,13 +1283,13 @@ export default function AdminPage() {
                               {queueModules.length > 0 && (
                                 <optgroup label="⚔ Module Folders">
                                   {queueModules.map(m => (
-                                    <option key={m.id} value={m.path}>{'↪ '.repeat(m.depth)}{m.name}</option>
+                                    <option key={m.id} value={m.path}>{m.path}</option>
                                   ))}
                                 </optgroup>
                               )}
                               <optgroup label="Library Folders">
                                 {queueFolders.filter(f => !f.is_module).map(f => (
-                                  <option key={f.id} value={f.path}>{'↪ '.repeat(f.depth)}{f.name}</option>
+                                  <option key={f.id} value={f.path}>{f.path}</option>
                                 ))}
                               </optgroup>
                             </select>
