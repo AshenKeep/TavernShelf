@@ -13,7 +13,7 @@ const Icon = ({ d, size = 16 }) => (
 const SORT_ICON = 'M3 6h18M7 12h10M11 18h2';
 
 // Content type card shown on the overview
-function ContentTypeCard({ ct, system, onClick }) {
+function ContentTypeCard({ ct, system, onClick, ts = 0 }) {
   const covers = (ct.covers || []).slice(0, 4);
   return (
     <div onClick={onClick} style={{
@@ -27,7 +27,7 @@ function ContentTypeCard({ ct, system, onClick }) {
       {/* Cover strip */}
       <div style={{ display: 'flex', height: 90, background: 'var(--bg-3)', overflow: 'hidden' }}>
         {covers.length > 0 ? covers.map((c, i) => (
-          <img key={i} src={c} alt="" style={{ flex: 1, objectFit: 'cover', borderRight: i < covers.length - 1 ? '1px solid var(--bg-0)' : 'none' }} />
+          <img key={i} src={`${c}?v=${ts}`} alt="" style={{ flex: 1, objectFit: 'cover', borderRight: i < covers.length - 1 ? '1px solid var(--bg-0)' : 'none' }} />
         )) : (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, color: 'var(--text-3)' }}>⚔</div>
         )}
@@ -42,7 +42,7 @@ function ContentTypeCard({ ct, system, onClick }) {
 }
 
 // Module folder card — with cover collage
-function ModuleCard({ folder, onClick }) {
+function ModuleCard({ folder, onClick, ts = 0 }) {
   const covers = (folder.covers || []).slice(0, 4);
   return (
     <div onClick={onClick} style={{
@@ -59,15 +59,15 @@ function ModuleCard({ folder, onClick }) {
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, color: 'var(--text-3)' }}>⚔</div>
         )}
         {covers.length === 1 && (
-          <img src={covers[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <img src={`${covers[0]}?v=${folder.updated_at||folder.id}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         )}
         {covers.length === 2 && covers.map((c, i) => (
-          <img key={i} src={`${c}?v=${folder.updated_at||folder.id}`} alt="" style={{ flex: 1, height: '100%', objectFit: 'cover', borderLeft: i > 0 ? '1px solid var(--bg-0)' : 'none' }} />
+          <img key={i} src={`${c}?v=${ts||folder.updated_at||folder.id}`} alt="" style={{ flex: 1, height: '100%', objectFit: 'cover', borderLeft: i > 0 ? '1px solid var(--bg-0)' : 'none' }} />
         ))}
         {covers.length >= 3 && (
           <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', height: '100%' }}>
             {covers.slice(0, 4).map((c, i) => (
-              <img key={i} src={`${c}?v=${folder.updated_at||folder.id}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderLeft: i % 2 === 1 ? '1px solid var(--bg-0)' : 'none', borderTop: i >= 2 ? '1px solid var(--bg-0)' : 'none' }} />
+              <img key={i} src={`${c}?v=${ts||folder.updated_at||folder.id}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderLeft: i % 2 === 1 ? '1px solid var(--bg-0)' : 'none', borderTop: i >= 2 ? '1px solid var(--bg-0)' : 'none' }} />
             ))}
           </div>
         )}
@@ -125,11 +125,13 @@ export default function LibraryPage() {
   };
 
   // Load overview — also exposed as a callback for event-driven refresh
+  const [overviewTs, setOverviewTs] = useState(Date.now());
+
   const loadOverview = () => {
     setOvLoading(true);
     const params = system ? { system } : {};
     get('/library/overview', params)
-      .then(setOverview)
+      .then(data => { setOverview(data); setOverviewTs(Date.now()); })
       .catch(() => {})
       .finally(() => setOvLoading(false));
   };
@@ -339,7 +341,7 @@ export default function LibraryPage() {
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
                           {overview.moduleFolders.map(f => (
-                            <ModuleCard key={f.id} folder={f} onClick={() => drillIntoFolder(f.path, f.id)} />
+                            <ModuleCard key={f.id} folder={f} onClick={() => drillIntoFolder(f.path, f.id)} ts={overviewTs} />
                           ))}
                         </div>
                       </div>
@@ -384,7 +386,7 @@ export default function LibraryPage() {
               overview?.moduleFolders?.length > 0 ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
                   {overview.moduleFolders.map(f => (
-                    <ModuleCard key={f.id} folder={f} onClick={() => drillIntoFolder(f.path, f.id)} />
+                    <ModuleCard key={f.id} folder={f} onClick={() => drillIntoFolder(f.path, f.id)} ts={overviewTs} />
                   ))}
                 </div>
               ) : (
@@ -429,12 +431,12 @@ export default function LibraryPage() {
                             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, color: 'var(--text-3)' }}>📁</div>
                           )}
                           {(sf.covers||[]).length === 1 && (
-                            <img src={sf.covers[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <img src={`${sf.covers[0]}?v=${overviewTs}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           )}
                           {(sf.covers||[]).length >= 2 && (
                             <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', height: '100%' }}>
                               {sf.covers.slice(0,2).map((c,i) => (
-                                <img key={i} src={c} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderLeft: i > 0 ? '1px solid var(--bg-0)' : 'none' }} />
+                                <img key={i} src={`${c}?v=${overviewTs}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderLeft: i > 0 ? '1px solid var(--bg-0)' : 'none' }} />
                               ))}
                             </div>
                           )}
