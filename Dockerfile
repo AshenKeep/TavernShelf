@@ -12,7 +12,7 @@ RUN npm run build
 FROM node:20-alpine
 
 # sharp still needs native deps for cover thumbnail generation
-RUN apk add --no-cache python3 make g++ vips-dev
+RUN apk add --no-cache python3 make g++ vips-dev poppler-utils
 
 WORKDIR /app
 
