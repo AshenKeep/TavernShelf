@@ -533,6 +533,42 @@ router.post('/items/:id/cover/extract', requireAuth, requireRole('admin'), async
   } catch (e) { logger.error('Library', 'Cover extract failed', { error: e.message }); res.status(500).json({ error: e.message }); }
 });
 
+
+// POST /api/library/regenerate-covers — re-generate covers for all PDFs that have none or a failed one
+router.post('/regenerate-covers', requireAuth, requireRole('admin'), async (req, res) => {
+  res.json({ message: 'Cover regeneration started in background' });
+  setImmediate(async () => {
+    try {
+      const db = await getDb();
+      const items = await dbAll(db, `
+        SELECT id, path, file_type FROM library_items
+        WHERE file_type IN ('pdf', 'cbz', 'image')
+      `);
+      let regenerated = 0;
+      for (const item of items) {
+        try {
+          const { join: pjoin } = await import('path');
+          const { existsSync, statSync } = await import('fs');
+          const { LIBRARY_PATH: LP, COVERS_PATH: CP } = await import('../config.js');
+          const absPath  = pjoin(LP, item.path);
+          const coverOut = pjoin(CP, `${item.id}.webp`);
+          if (!existsSync(absPath)) continue;
+          // Skip if cover already exists and is valid (>1KB)
+          if (existsSync(coverOut) && statSync(coverOut).size > 1024) continue;
+          const coverPath = await generateCover(absPath, item.id, item.file_type);
+          if (coverPath) {
+            await dbRun(db, 'UPDATE library_items SET cover_path=$1 WHERE id=$2', [coverPath, item.id]);
+            regenerated++;
+          }
+        } catch {}
+      }
+      logger.event('Library', 'Cover regeneration complete', { regenerated, total: items.length });
+    } catch (e) {
+      logger.error('Library', 'Cover regeneration failed', { error: e.message });
+    }
+  });
+});
+
 // POST /api/library/scan
 router.post('/scan', requireAuth, requireRole('admin'), async (req, res) => {
   res.json({ message: 'Scan started' });

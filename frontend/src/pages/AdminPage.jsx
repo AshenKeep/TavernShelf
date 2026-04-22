@@ -965,6 +965,8 @@ export default function AdminPage() {
   const [selectedIds, setSelectedIds]     = useState(new Set());
   const [bulkApproving, setBulkApproving] = useState(false);
   const [scanMsg, setScanMsg]           = useState('');
+  const [regenMsg, setRegenMsg]         = useState('');
+  const [regenning, setRegenning]       = useState(false);
   const [restoring, setRestoring]       = useState(false);
   const [pwCurrent, setPwCurrent]       = useState('');
   const [pwNew,     setPwNew]           = useState('');
@@ -1044,6 +1046,15 @@ export default function AdminPage() {
     catch (e) { setScanMsg(`Error: ${e.message}`); }
     finally { setScanning(false); }
   };
+  const triggerRegenCovers = async () => {
+    setRegenning(true); setRegenMsg('');
+    try {
+      await post('/library/regenerate-covers', {});
+      setRegenMsg('Cover regeneration started — check logs for progress');
+    } catch (e) { setRegenMsg(`Error: ${e.message}`); }
+    finally { setRegenning(false); }
+  };
+
   const handleBackup = () => {
     fetch('/api/admin/backup', { headers: { Authorization: `Bearer ${token}` } })
       .then(r => {
@@ -1309,6 +1320,15 @@ export default function AdminPage() {
               {scanning ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Scanning…</> : '↺ Scan Library Now'}
             </button>
             {scanMsg && <div style={{ marginTop: 10, fontSize: 13, color: 'var(--green-hi)' }}>{scanMsg}</div>}
+
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 13, color: 'var(--text-1)', fontWeight: 500, marginBottom: 6 }}>Regenerate Covers</div>
+              <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 10 }}>Re-renders first page of every PDF and CBZ that has a missing or failed cover. Runs in background.</div>
+              <button className="btn btn-ghost" onClick={triggerRegenCovers} disabled={regenning}>
+                {regenning ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Starting…</> : '🖼 Regenerate All Covers'}
+              </button>
+              {regenMsg && <div style={{ marginTop: 10, fontSize: 13, color: 'var(--green-hi)' }}>{regenMsg}</div>}
+            </div>
           </div>
           <div className="card" style={{ padding: 16, background: 'rgba(200,136,42,0.06)', border: '1px solid rgba(200,136,42,0.2)' }}>
             <div style={{ fontSize: 13, color: 'var(--amber-hi)', fontWeight: 500, marginBottom: 6 }}>
