@@ -91,28 +91,32 @@ export async function generatePlaceholderCover(itemId, title) {
 
 
 async function extractFirstPageFromPdf(filePath, outFile) {
-  // Use pdftoppm (poppler-utils) to render page 1 as a PNG, then resize with sharp.
-  // This is far more reliable than trying to extract embedded XObjects via pdf-lib.
+  // Use pdftoppm to render page 1, then sharp to resize.
+  // Low DPI (72) keeps the intermediate PNG small and fast even for large PDFs.
   const { execFile } = await import('child_process');
-  const { mkdirSync, readdirSync, unlinkSync } = await import('fs');
+  const { mkdirSync, readdirSync } = await import('fs');
   const { join: pjoin, dirname } = await import('path');
-  const { promisify } = await import('util');
-  const exec = promisify(execFile);
 
   const tmpDir = pjoin(dirname(outFile), `tmp_pdf_${Date.now()}`);
   try {
     mkdirSync(tmpDir, { recursive: true });
     const prefix = pjoin(tmpDir, 'page');
 
-    // Render page 1 at 150 DPI as PNG (-png -f 1 -l 1 -r 150)
-    await exec('pdftoppm', ['-png', '-f', '1', '-l', '1', '-r', '150', filePath, prefix]);
+    // 72 DPI is enough for a 280x400 thumbnail and produces ~1-3MB PNGs
+    // maxBuffer 200MB, timeout 120s — handles large PDFs
+    await new Promise((resolve, reject) => {
+      execFile(
+        'pdftoppm',
+        ['-png', '-f', '1', '-l', '1', '-r', '72', filePath, prefix],
+        { maxBuffer: 200 * 1024 * 1024, timeout: 120000 },
+        (err) => err ? reject(err) : resolve()
+      );
+    });
 
-    // Find the output file (pdftoppm names it prefix-1.png or prefix-01.png etc)
     const files = readdirSync(tmpDir).filter(f => f.endsWith('.png'));
     if (files.length === 0) return false;
 
-    const pngPath = pjoin(tmpDir, files[0]);
-    await sharp(pngPath)
+    await sharp(pjoin(tmpDir, files[0]))
       .resize(280, 400, { fit: 'cover', position: 'top' })
       .webp({ quality: 85 })
       .toFile(outFile);
@@ -122,7 +126,6 @@ async function extractFirstPageFromPdf(filePath, outFile) {
     logger.warn('Cover', 'pdftoppm render failed', { file: filePath, error: e.message });
     return false;
   } finally {
-    // Clean up temp dir
     try {
       const { rmSync } = await import('fs');
       rmSync(tmpDir, { recursive: true, force: true });
