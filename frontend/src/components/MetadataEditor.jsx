@@ -425,41 +425,68 @@ export default function MetadataEditor({ item, onClose, onSave }) {
               </div>
               {/* Change module or move out */}
               <div style={{ paddingLeft:8, display:'flex', flexDirection:'column', gap:8 }}>
-                <div>
-                  <label style={{ display:'block', fontSize:12, color:'var(--text-2)', marginBottom:5 }}>Move to a different module or folder</label>
-                  <div style={{ display:'flex', gap:8 }}>
-                    <select value={moveModuleId} onChange={e => { setMoveModuleId(e.target.value); setMoveSubfolderId(''); }}
-                      style={{ fontFamily:'monospace', fontSize:12, flex:1 }}>
-                      <option value="">— Select destination —</option>
-                      <optgroup label="Module Folders">
-                        {moduleFolders.filter(m => m.path !== currentModulePath).map(m => (
-                          <option key={m.id} value={m.id}>{m.path}</option>
-                        ))}
-                      </optgroup>
-                      <optgroup label="Library Folders (move out of module)">
-                        {allFolders.filter(f => !moduleFolders.some(m => f.path === m.path || f.path.startsWith(m.path + '/'))).map(f => (
-                          <option key={f.id} value={'folder:' + f.path}>{'↪ '.repeat(f.depth)}{f.name}</option>
-                        ))}
-                      </optgroup>
+                <label style={{ display:'block', fontSize:12, color:'var(--text-2)', marginBottom:5 }}>Move to a different module or folder</label>
+
+                {/* Step 1: pick destination module or library folder */}
+                <select value={moveModuleId} onChange={e => { setMoveModuleId(e.target.value); setMoveSubfolderId(''); }}
+                  style={{ fontFamily:'monospace', fontSize:12 }}>
+                  <option value="">— Select destination —</option>
+                  <optgroup label="Module Folders">
+                    {moduleFolders.filter(m => m.path !== currentModulePath).map(m => (
+                      <option key={m.id} value={m.id}>{m.path}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Library Folders (move out of module)">
+                    {allFolders.filter(f => !moduleFolders.some(m => f.path === m.path || f.path.startsWith(m.path + '/'))).map(f => (
+                      <option key={f.id} value={'folder:' + f.path}>{f.path}</option>
+                    ))}
+                  </optgroup>
+                </select>
+
+                {/* Step 2: if a module is selected, show its subfolders */}
+                {moveModuleId && !moveModuleId.startsWith('folder:') && (() => {
+                  const selectedMod = moduleFolders.find(m => m.id === moveModuleId);
+                  const subs = selectedMod
+                    ? allFolders.filter(f =>
+                        f.path.startsWith(selectedMod.path + '/') &&
+                        f.path.split('/').length === selectedMod.path.split('/').length + 1
+                      )
+                    : [];
+                  return subs.length > 0 ? (
+                    <select value={moveSubfolderId} onChange={e => setMoveSubfolderId(e.target.value)}
+                      style={{ fontFamily:'monospace', fontSize:12 }}>
+                      <option value="">— Module root —</option>
+                      {subs.map(sf => <option key={sf.id} value={sf.path}>{sf.path}</option>)}
                     </select>
-                    <button type="button" className="btn btn-primary btn-sm" disabled={!moveModuleId || movingToModule}
-                      onClick={async () => {
-                        setMovingToModule(true); setError('');
-                        try {
-                          let targetFolder;
-                          if (moveModuleId.startsWith('folder:')) {
-                            targetFolder = moveModuleId.replace('folder:', '');
-                          } else {
-                            targetFolder = moveSubfolderId || moduleFolders.find(m => m.id === moveModuleId)?.path;
-                          }
-                          await post(`/library/items/${item.id}/move`, { targetFolder });
-                          window.location.reload();
-                        } catch(e) { setError(e.message); setMovingToModule(false); }
-                      }}>
-                      {movingToModule ? <span className="spinner" style={{ width:12, height:12 }}/> : 'Move'}
-                    </button>
+                  ) : null;
+                })()}
+
+                {/* Destination preview */}
+                {moveModuleId && (
+                  <div style={{ fontSize:11, fontFamily:'monospace', color:'var(--amber-hi)' }}>
+                    → {moveModuleId.startsWith('folder:')
+                        ? moveModuleId.replace('folder:', '')
+                        : (moveSubfolderId || moduleFolders.find(m => m.id === moveModuleId)?.path)}/
                   </div>
-                </div>
+                )}
+
+                <button type="button" className="btn btn-primary btn-sm" style={{ alignSelf:'flex-start' }}
+                  disabled={!moveModuleId || movingToModule}
+                  onClick={async () => {
+                    setMovingToModule(true); setError('');
+                    try {
+                      let targetFolder;
+                      if (moveModuleId.startsWith('folder:')) {
+                        targetFolder = moveModuleId.replace('folder:', '');
+                      } else {
+                        targetFolder = moveSubfolderId || moduleFolders.find(m => m.id === moveModuleId)?.path;
+                      }
+                      await post(`/library/items/${item.id}/move`, { targetFolder });
+                      window.location.reload();
+                    } catch(e) { setError(e.message); setMovingToModule(false); }
+                  }}>
+                  {movingToModule ? <span className="spinner" style={{ width:12, height:12 }}/> : 'Move'}
+                </button>
               </div>
             </div>
           ) : (
