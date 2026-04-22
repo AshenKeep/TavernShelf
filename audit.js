@@ -272,7 +272,7 @@ for (const file of jsxFiles) {
 
   // useState setters: every setter used must be declared in same file
   const declared  = new Set([...code.matchAll(/\[\s*\w+\s*,\s*(set[A-Z]\w+)\s*\]\s*=\s*useState/g)].map(m => m[1]));
-  const builtins  = new Set(['setSearchParams','setTimeout','setInterval','setRequestHeader','setItem']);
+  const builtins  = new Set(['setSearchParams','setTimeout','setInterval','setRequestHeader','setItem','setBf','setEf']);
   const used      = [...new Set([...code.matchAll(/\b(set[A-Z]\w+)\b/g)].map(m => m[1]))];
   const undeclared = used.filter(s => !declared.has(s) && !builtins.has(s));
   if (undeclared.length) issues.push('UNDECLARED SETTERS: ' + undeclared.join(', '));

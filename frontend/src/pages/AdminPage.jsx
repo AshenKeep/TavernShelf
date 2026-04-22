@@ -2,6 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useApi } from '../hooks/useApi.js';
 import { appEvents } from '../context/AuthContext.jsx';
 
+const TTRPG_SYSTEMS = ['D&D 5e','D&D 5.5e','D&D 3.5e','D&D 4e','OSE','Pathfinder 1e','Pathfinder 2e','Call of Cthulhu','Shadowrun','Starfinder','Forbidden Lands','Savage Worlds','Year Zero Engine','GURPS','FATE Core','Blades in the Dark','Cairn','Mothership','Mörk Borg','Other'];
+const CONTENT_TYPES = ['Core Rulebook','Supplement','Adventure Module','Sourcebook','Bestiary','Campaign Setting','Magic Items','Pregen Characters','Battle Maps','Tokens','Encounter','Quick Reference','System Reference','Other'];
+
 function formatSize(b) {
   if (!b) return '—';
   if (b < 1024*1024) return `${(b/1024).toFixed(0)} KB`;
@@ -965,6 +968,9 @@ export default function AdminPage() {
   const [selectedIds, setSelectedIds]     = useState(new Set());
   const [bulkApproving, setBulkApproving] = useState(false);
   const [bulkEditFolder, setBulkEditFolder] = useState('');
+  const [showBulkEdit, setShowBulkEdit]   = useState(false);
+  const [bulkEditForm, setBulkEditForm]   = useState({ system:'', content_type:'', inModule:false, inModuleFolder:'', inModuleSubfolder:'', moduleMode:'existing', moduleName:'', moduleFolder:'', target_folder:'' });
+  const [bulkEditSaving, setBulkEditSaving] = useState(false);
   const [bulkSaving, setBulkSaving]       = useState(false);
   const [scanMsg, setScanMsg]           = useState('');
   const [regenMsg, setRegenMsg]         = useState('');
@@ -981,6 +987,9 @@ export default function AdminPage() {
   const restoreFileRef = useRef(null);
 
   const loadQueue   = () => get('/uploads?status=pending').then(setQueue).catch(() => {});
+  const bulkInModuleSubfolders = bulkEditForm.inModuleFolder
+    ? queueFolders.filter(f => f.path.startsWith(bulkEditForm.inModuleFolder + '/') && f.path.split('/').length === bulkEditForm.inModuleFolder.split('/').length + 1)
+    : [];
   const loadInvites = () => get('/auth/invites').then(setInvites).catch(() => {});
   const loadStats   = () => get('/library/stats').then(setStats).catch(() => {});
 
@@ -1002,7 +1011,7 @@ export default function AdminPage() {
   useEffect(() => { if (tab === 'invites') loadInvites(); }, [tab]);
 
   const approve = async (id) => { await post(`/uploads/${id}/approve`, {}); loadQueue(); appEvents.emit('uploadReviewed'); };
-  const saveUploadEdit = async (id) => {
+  const saveUploadEdit = async (id, computedFolder) => {
     const form = uploadEditForm;
     await put(`/uploads/${id}`, {
       title:         form.title,
@@ -1013,11 +1022,40 @@ export default function AdminPage() {
       publisher:     form.publisher,
       year:          form.year ? parseInt(form.year) : null,
       tags:          form.tags?.split(',').map(t => t.trim()).filter(Boolean),
-      target_folder: form.target_folder,
+      target_folder: computedFolder || form.target_folder,
     });
     loadQueue();
     setEditingUpload(null);
     setSelectedIds(new Set());
+  };
+
+  // Auto-compute target folder for bulk edit
+  const computeBulkFolder = (form) => {
+    if (!form.system || !form.content_type) return '';
+    if (form.content_type === 'Adventure Module') {
+      if (form.moduleMode === 'existing' && form.moduleFolder) return form.moduleFolder;
+      if (form.moduleMode === 'new' && form.moduleName.trim()) return `${form.system}/Adventure Module/${form.moduleName.trim()}`;
+      return '';
+    }
+    if (form.inModule && form.inModuleFolder) return form.inModuleSubfolder || form.inModuleFolder;
+    return `${form.system}/${form.content_type}`;
+  };
+
+  const saveBulkEdit = async () => {
+    const folder = bulkEditForm.target_folder || computeBulkFolder(bulkEditForm);
+    if (selectedIds.size === 0) return;
+    setBulkEditSaving(true);
+    try {
+      const payload = {};
+      if (bulkEditForm.system) payload.system = bulkEditForm.system;
+      if (bulkEditForm.content_type) payload.content_type = bulkEditForm.content_type;
+      if (folder) payload.target_folder = folder;
+      await Promise.all([...selectedIds].map(id => put(`/uploads/${id}`, payload)));
+      setShowBulkEdit(false);
+      setBulkEditForm({ system:'', content_type:'', inModule:false, inModuleFolder:'', inModuleSubfolder:'', moduleMode:'existing', moduleName:'', moduleFolder:'', target_folder:'' });
+      loadQueue();
+    } catch (e) { console.error('Bulk edit failed:', e.message); }
+    finally { setBulkEditSaving(false); }
   };
 
   const bulkSetFolder = async () => {
@@ -1183,27 +1221,9 @@ export default function AdminPage() {
                 </label>
                 {selectedIds.size > 0 && (
                   <>
-                    <div style={{ display:'flex', gap:6, alignItems:'center', marginLeft: 8 }}>
-                      <select value={bulkEditFolder} onChange={e => setBulkEditFolder(e.target.value)}
-                        style={{ fontSize:12, fontFamily:'monospace', maxWidth:260 }}>
-                        <option value="">— Set folder for selected —</option>
-                        {queueModules.length > 0 && (
-                          <optgroup label="⚔ Module Folders">
-                            {queueModules.map(m => (
-                              <option key={m.id} value={m.path}>{m.path}</option>
-                            ))}
-                          </optgroup>
-                        )}
-                        <optgroup label="Library Folders">
-                          {queueFolders.filter(f => !f.is_module).map(f => (
-                            <option key={f.id} value={f.path}>{f.path}</option>
-                          ))}
-                        </optgroup>
-                      </select>
-                      <button className="btn btn-ghost btn-sm" disabled={!bulkEditFolder || bulkSaving} onClick={bulkSetFolder}>
-                        {bulkSaving ? <span className="spinner" style={{ width:12, height:12 }}/> : 'Set Folder'}
-                      </button>
-                    </div>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setShowBulkEdit(v => !v)}>
+                      ✎ Bulk Edit {selectedIds.size}
+                    </button>
                     <button className="btn btn-primary btn-sm" disabled={bulkApproving} onClick={bulkApprove}>
                       {bulkApproving ? <span className="spinner" style={{ width:12, height:12 }}/> : `✓ Approve ${selectedIds.size}`}
                     </button>
@@ -1211,6 +1231,109 @@ export default function AdminPage() {
                   </>
                 )}
               </div>
+
+              {/* Bulk edit panel */}
+              {showBulkEdit && selectedIds.size > 0 && (() => {
+                const bf = bulkEditForm;
+                const setBf = (upd) => setBulkEditForm(prev => ({ ...prev, ...upd }));
+                const isAdv = bf.content_type === 'Adventure Module';
+                const computedFolder = bf.target_folder || computeBulkFolder(bf);
+                return (
+                  <div style={{ marginBottom:16, padding:16, background:'var(--bg-2)', border:'1px solid var(--amber)', borderRadius:10 }}>
+                    <div style={{ fontSize:12, fontWeight:600, color:'var(--amber)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:14 }}>
+                      Bulk Edit — {selectedIds.size} items
+                    </div>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
+                      {/* System */}
+                      <div>
+                        <label style={{ display:'block', fontSize:12, color:'var(--text-2)', marginBottom:5 }}>Game System</label>
+                        <select value={bf.system} onChange={e => setBf({ system: e.target.value, moduleFolder:'', inModuleFolder:'' })}>
+                          <option value="">— Keep existing —</option>
+                          {TTRPG_SYSTEMS.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
+                      {/* Content Type */}
+                      <div>
+                        <label style={{ display:'block', fontSize:12, color:'var(--text-2)', marginBottom:5 }}>Content Type</label>
+                        <select value={bf.content_type} onChange={e => setBf({ content_type: e.target.value, inModule:false, inModuleFolder:'', moduleFolder:'' })}>
+                          <option value="">— Keep existing —</option>
+                          {CONTENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Adventure Module picker */}
+                    {isAdv && bf.system && (
+                      <div style={{ marginBottom:12, padding:'12px 14px', background:'var(--bg-3)', borderRadius:8, border:'1px solid var(--border)' }}>
+                        <label style={{ display:'block', fontSize:12, color:'var(--text-2)', marginBottom:8 }}>Module Folder</label>
+                        <div style={{ display:'flex', gap:0, marginBottom:10, borderRadius:6, overflow:'hidden', border:'1px solid var(--border)', width:'fit-content' }}>
+                          {['existing','new'].map(mode => (
+                            <button key={mode} type="button"
+                              onClick={() => setBf({ moduleMode: mode, moduleFolder:'', moduleName:'' })}
+                              style={{ padding:'6px 14px', fontSize:12, border:'none', cursor:'pointer',
+                                background: bf.moduleMode === mode ? 'var(--amber-dim)' : 'var(--bg-3)',
+                                color: bf.moduleMode === mode ? 'var(--text-0)' : 'var(--text-2)',
+                                borderRight: mode === 'existing' ? '1px solid var(--border)' : 'none' }}>
+                              {mode === 'existing' ? '📁 Existing' : '✦ New'}
+                            </button>
+                          ))}
+                        </div>
+                        {bf.moduleMode === 'existing' ? (
+                          <select value={bf.moduleFolder} onChange={e => setBf({ moduleFolder: e.target.value })}>
+                            <option value="">— Select module —</option>
+                            {queueModules.filter(m => !bf.system || m.path.startsWith(bf.system + '/')).map(m => (
+                              <option key={m.id} value={m.path}>{m.path}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input value={bf.moduleName} onChange={e => setBf({ moduleName: e.target.value })}
+                            placeholder="e.g. Curse of Strahd" />
+                        )}
+                      </div>
+                    )}
+
+                    {/* In-module for non-module content */}
+                    {!isAdv && bf.content_type && queueModules.length > 0 && (
+                      <div style={{ marginBottom:12, padding:'12px 14px', background:'var(--bg-3)', borderRadius:8, border:'1px solid var(--border)' }}>
+                        <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, cursor:'pointer' }}>
+                          <input type="checkbox" checked={bf.inModule} onChange={e => setBf({ inModule: e.target.checked, inModuleFolder:'', inModuleSubfolder:'' })} />
+                          These files belong inside an Adventure Module folder
+                        </label>
+                        {bf.inModule && (
+                          <div style={{ marginTop:10, display:'flex', flexDirection:'column', gap:8 }}>
+                            <select value={bf.inModuleFolder} onChange={e => setBf({ inModuleFolder: e.target.value, inModuleSubfolder:'' })}>
+                              <option value="">— Select module —</option>
+                              {queueModules.filter(m => !bf.system || m.path.startsWith(bf.system + '/')).map(m => (
+                                <option key={m.id} value={m.path}>{m.path}</option>
+                              ))}
+                            </select>
+                            {bulkInModuleSubfolders.length > 0 && (
+                              <select value={bf.inModuleSubfolder} onChange={e => setBf({ inModuleSubfolder: e.target.value })}>
+                                <option value="">— Module root —</option>
+                                {bulkInModuleSubfolders.map(sf => <option key={sf.id} value={sf.path}>{sf.path}</option>)}
+                              </select>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Computed target folder */}
+                    {computedFolder && (
+                      <div style={{ marginBottom:12, fontSize:12, fontFamily:'monospace', color:'var(--amber-hi)', padding:'6px 10px', background:'var(--bg-3)', borderRadius:6 }}>
+                        📁 {computedFolder}
+                      </div>
+                    )}
+
+                    <div style={{ display:'flex', gap:8 }}>
+                      <button className="btn btn-primary btn-sm" onClick={saveBulkEdit} disabled={bulkEditSaving}>
+                        {bulkEditSaving ? <><span className="spinner" style={{ width:12, height:12 }}/> Saving…</> : `Save ${selectedIds.size} items`}
+                      </button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setShowBulkEdit(false)}>Cancel</button>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {queue.map(item => (
@@ -1240,7 +1363,9 @@ export default function AdminPage() {
                             publisher: item.publisher||'',
                             year: item.year||'',
                             tags: (JSON.parse(item.tags||'[]')).join(', '),
-                            target_folder: item.target_folder||'',
+                            target_folder: '',
+                            inModule: false, inModuleFolder:'', inModuleSubfolder:'',
+                            moduleMode:'existing', moduleName:'', moduleFolder:'',
                           });
                         }}>✎ Edit</button>
                         <button className="btn btn-sm btn-primary" onClick={() => approve(item.id)}>✓ Approve</button>
@@ -1254,54 +1379,127 @@ export default function AdminPage() {
                         <button className="btn btn-sm btn-ghost" onClick={() => setRejectId(null)}>Cancel</button>
                       </div>
                     )}
-                    {editingUpload === item.id && (
-                      <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-                          {[['title','Title'],['authors','Authors (comma-sep)'],['system','System'],['publisher','Publisher'],['year','Year'],['tags','Tags (comma-sep)']].map(([k,label]) => (
-                            <div key={k}>
-                              <label style={{ display:'block', fontSize:11, color:'var(--text-3)', marginBottom:3 }}>{label}</label>
-                              <input value={uploadEditForm[k]||''} onChange={e => setUploadEditForm(f=>({...f,[k]:e.target.value}))} style={{ fontSize:12 }} />
+                    {editingUpload === item.id && (() => {
+                      const ef = uploadEditForm;
+                      const setEf = upd => setUploadEditForm(f => ({ ...f, ...upd }));
+                      const isAdv = ef.content_type === 'Adventure Module';
+                      const singleInModuleSubs = ef.inModuleFolder
+                        ? queueFolders.filter(f => f.path.startsWith(ef.inModuleFolder + '/') && f.path.split('/').length === ef.inModuleFolder.split('/').length + 1)
+                        : [];
+                      const computedFolder = ef.target_folder || (() => {
+                        if (!ef.system || !ef.content_type) return '';
+                        if (isAdv) {
+                          if (ef.moduleMode === 'existing' && ef.moduleFolder) return ef.moduleFolder;
+                          if (ef.moduleMode === 'new' && ef.moduleName?.trim()) return `${ef.system}/Adventure Module/${ef.moduleName.trim()}`;
+                          return '';
+                        }
+                        if (ef.inModule && ef.inModuleFolder) return ef.inModuleSubfolder || ef.inModuleFolder;
+                        return `${ef.system}/${ef.content_type}`;
+                      })();
+                      return (
+                        <div style={{ marginTop:12, borderTop:'1px solid var(--border)', paddingTop:12, display:'flex', flexDirection:'column', gap:12 }}>
+                          {/* System + Content Type */}
+                          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                            <div>
+                              <label style={{ display:'block', fontSize:11, color:'var(--text-3)', marginBottom:4 }}>Game System</label>
+                              <select value={ef.system||''} onChange={e => setEf({ system: e.target.value, moduleFolder:'', inModuleFolder:'' })}>
+                                <option value="">— Select —</option>
+                                {TTRPG_SYSTEMS.map(s => <option key={s} value={s}>{s}</option>)}
+                              </select>
                             </div>
-                          ))}
-                          <div>
-                            <label style={{ display:'block', fontSize:11, color:'var(--text-3)', marginBottom:3 }}>Content Type</label>
-                            <select value={uploadEditForm.content_type||''} onChange={e => setUploadEditForm(f=>({...f,content_type:e.target.value}))} style={{ fontSize:12 }}>
-                              <option value="">— Select —</option>
-                              {['Core Rulebook','Supplement','Adventure Module','Sourcebook','Bestiary','Campaign Setting','Magic Items','Pregen Characters','Battle Maps','Tokens','Encounter','Quick Reference','System Reference','Other'].map(t => (
-                                <option key={t} value={t}>{t}</option>
-                              ))}
-                            </select>
+                            <div>
+                              <label style={{ display:'block', fontSize:11, color:'var(--text-3)', marginBottom:4 }}>Content Type</label>
+                              <select value={ef.content_type||''} onChange={e => setEf({ content_type: e.target.value, inModule:false, inModuleFolder:'', moduleFolder:'' })}>
+                                <option value="">— Select —</option>
+                                {CONTENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                              </select>
+                            </div>
                           </div>
-                          <div style={{ gridColumn:'1/-1' }}>
-                            <label style={{ display:'block', fontSize:11, color:'var(--text-3)', marginBottom:3 }}>Description</label>
-                            <textarea value={uploadEditForm.description||''} rows={2} style={{ resize:'vertical', fontSize:12 }} onChange={e => setUploadEditForm(f=>({...f,description:e.target.value}))} />
-                          </div>
-                          <div style={{ gridColumn:'1/-1' }}>
-                            <label style={{ display:'block', fontSize:11, color:'var(--text-3)', marginBottom:3 }}>Target Folder</label>
-                            <select value={uploadEditForm.target_folder||''} onChange={e => setUploadEditForm(f=>({...f,target_folder:e.target.value}))} style={{ fontSize:12, fontFamily:'monospace' }}>
-                              <option value="">— Keep current: {item.target_folder} —</option>
-                              {queueModules.length > 0 && (
-                                <optgroup label="⚔ Module Folders">
-                                  {queueModules.map(m => (
+
+                          {/* Adventure Module picker */}
+                          {isAdv && ef.system && (
+                            <div style={{ padding:'12px 14px', background:'var(--bg-3)', borderRadius:8, border:'1px solid var(--border)' }}>
+                              <label style={{ display:'block', fontSize:12, color:'var(--text-2)', marginBottom:8 }}>Module Folder</label>
+                              <div style={{ display:'flex', gap:0, marginBottom:10, borderRadius:6, overflow:'hidden', border:'1px solid var(--border)', width:'fit-content' }}>
+                                {['existing','new'].map(mode => (
+                                  <button key={mode} type="button"
+                                    onClick={() => setEf({ moduleMode:mode, moduleFolder:'', moduleName:'' })}
+                                    style={{ padding:'6px 14px', fontSize:12, border:'none', cursor:'pointer',
+                                      background: ef.moduleMode === mode ? 'var(--amber-dim)' : 'var(--bg-3)',
+                                      color: ef.moduleMode === mode ? 'var(--text-0)' : 'var(--text-2)',
+                                      borderRight: mode === 'existing' ? '1px solid var(--border)' : 'none' }}>
+                                    {mode === 'existing' ? '📁 Existing' : '✦ New'}
+                                  </button>
+                                ))}
+                              </div>
+                              {ef.moduleMode === 'existing' ? (
+                                <select value={ef.moduleFolder||''} onChange={e => setEf({ moduleFolder: e.target.value })}>
+                                  <option value="">— Select module —</option>
+                                  {queueModules.filter(m => !ef.system || m.path.startsWith(ef.system + '/')).map(m => (
                                     <option key={m.id} value={m.path}>{m.path}</option>
                                   ))}
-                                </optgroup>
+                                </select>
+                              ) : (
+                                <input value={ef.moduleName||''} onChange={e => setEf({ moduleName: e.target.value })} placeholder="e.g. Curse of Strahd" />
                               )}
-                              <optgroup label="Library Folders">
-                                {queueFolders.filter(f => !f.is_module).map(f => (
-                                  <option key={f.id} value={f.path}>{f.path}</option>
-                                ))}
-                              </optgroup>
-                            </select>
+                            </div>
+                          )}
+
+                          {/* In-module for non-module content */}
+                          {!isAdv && ef.content_type && queueModules.length > 0 && (
+                            <div style={{ padding:'12px 14px', background:'var(--bg-3)', borderRadius:8, border:'1px solid var(--border)' }}>
+                              <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, cursor:'pointer' }}>
+                                <input type="checkbox" checked={!!ef.inModule} onChange={e => setEf({ inModule: e.target.checked, inModuleFolder:'', inModuleSubfolder:'' })} />
+                                This file belongs inside an Adventure Module folder
+                              </label>
+                              {ef.inModule && (
+                                <div style={{ marginTop:10, display:'flex', flexDirection:'column', gap:8 }}>
+                                  <select value={ef.inModuleFolder||''} onChange={e => setEf({ inModuleFolder: e.target.value, inModuleSubfolder:'' })}>
+                                    <option value="">— Select module —</option>
+                                    {queueModules.filter(m => !ef.system || m.path.startsWith(ef.system + '/')).map(m => (
+                                      <option key={m.id} value={m.path}>{m.path}</option>
+                                    ))}
+                                  </select>
+                                  {singleInModuleSubs.length > 0 && (
+                                    <select value={ef.inModuleSubfolder||''} onChange={e => setEf({ inModuleSubfolder: e.target.value })}>
+                                      <option value="">— Module root —</option>
+                                      {singleInModuleSubs.map(sf => <option key={sf.id} value={sf.path}>{sf.path}</option>)}
+                                    </select>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Target folder preview */}
+                          {computedFolder && (
+                            <div style={{ fontSize:12, fontFamily:'monospace', color:'var(--amber-hi)', padding:'6px 10px', background:'var(--bg-3)', borderRadius:6 }}>
+                              📁 {computedFolder}
+                            </div>
+                          )}
+
+                          {/* Details */}
+                          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                            {[['title','Title'],['authors','Authors (comma-sep)'],['publisher','Publisher'],['year','Year'],['tags','Tags (comma-sep)']].map(([k,label]) => (
+                              <div key={k}>
+                                <label style={{ display:'block', fontSize:11, color:'var(--text-3)', marginBottom:3 }}>{label}</label>
+                                <input value={ef[k]||''} onChange={e => setEf({ [k]: e.target.value })} style={{ fontSize:12 }} />
+                              </div>
+                            ))}
+                            <div style={{ gridColumn:'1/-1' }}>
+                              <label style={{ display:'block', fontSize:11, color:'var(--text-3)', marginBottom:3 }}>Description</label>
+                              <textarea value={ef.description||''} rows={2} style={{ resize:'vertical', fontSize:12 }} onChange={e => setEf({ description: e.target.value })} />
+                            </div>
+                          </div>
+
+                          <div style={{ display:'flex', gap:8 }}>
+                            <button className="btn btn-primary btn-sm" onClick={() => saveUploadEdit(item.id, computedFolder)}>Save Changes</button>
+                            <button className="btn btn-ghost btn-sm" onClick={() => { saveUploadEdit(item.id, computedFolder).then(() => approve(item.id)); }}>Save &amp; Approve</button>
+                            <button className="btn btn-ghost btn-sm" onClick={() => setEditingUpload(null)}>Cancel</button>
                           </div>
                         </div>
-                        <div style={{ display:'flex', gap:8 }}>
-                          <button className="btn btn-primary btn-sm" onClick={() => saveUploadEdit(item.id)}>Save Changes</button>
-                          <button className="btn btn-ghost btn-sm" onClick={() => { setEditingUpload(null); approve(item.id); }}>Save &amp; Approve</button>
-                          <button className="btn btn-ghost btn-sm" onClick={() => setEditingUpload(null)}>Cancel</button>
-                        </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
                 ))}
               </div>
